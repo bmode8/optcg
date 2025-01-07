@@ -5,7 +5,6 @@ use std::fs::File;
 use std::io::Write;
 use std::sync::mpsc::{channel, Sender, Receiver};
 
-use nom::{IResult, bytes::complete::tag};
 use serde::{Serialize, Deserialize};
 
 fn main() {
