@@ -1,0 +1,17 @@
+// OnePiece Deck Sample
+1 ST01-001 Monkey D. Luffy (P0)
+4 ST01-006 Tony Tony Chopper (P0)
+4 ST01-007 Nami (P0)
+4 ST01-002 Usopp (P0)
+4 ST01-003 Carue (P0)
+4 ST01-011 Brook (P0)
+4 ST01-004 Sanji (P0)
+4 ST01-009 Nefertari Vivi (P0)
+4 ST01-005 Jinbe (P0)
+4 ST01-008 Nico Robin (P0)
+4 ST01-013 Roronoa Zoro (P0)
+4 ST01-010 Franky (P0)
+4 ST01-012 Monkey D. Luffy (P0)
+1 ST01-014 Guard Point (P0)
+1 ST01-015 Jet Pistol (P0)
+10 DON-don Your Turn +1000

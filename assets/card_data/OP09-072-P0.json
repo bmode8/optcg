@@ -1,0 +1,33 @@
+{
+  "name": "Franky",
+  "identifier": "OP09-072",
+  "art": "P1",
+  "cost": 4,
+  "category": "Character",
+  "power": 5000,
+  "counter_power": 1000,
+  "attribute": [
+    "Strike"
+  ],
+  "color": [
+    "Purple"
+  ],
+  "types": [
+    "Straw Hat Crew"
+  ],
+  "effects": [
+    "Blocker",
+    {
+      "TimedEffect": [
+        "OnPlay",
+        {
+          "MinusDon": 2
+        },
+        {
+          "Draw": 2
+        }
+      ]
+    }
+  ],
+  "attached_don": []
+}
