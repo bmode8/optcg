@@ -12,7 +12,7 @@ fn main() {
         attribute: vec![Attribute::Strike],
         color: vec![CardColor::Purple],
         types: vec!["Straw Hat Crew".to_string()],
-        effects: vec![Effect::Blocker, Effect::TimedEffect(MainPhaseAction::PlayCard, EffectCost::MinusDon(2), Box::new(Effect::Draw(2)))],
+        effects: vec![Effect::Blocker, Effect::TimedEffect(Timing::OnPlay, EffectCost::MinusDon(2), Box::new(Effect::Draw(2)))],
         attached_don: vec![],
     };
     
@@ -137,22 +137,27 @@ pub enum TurnPhase {
 
 #[derive(Debug, Clone)]
 pub enum MainPhaseAction {
-    PlayCard, // This is also used in `Effect::TimedEffect` as an indicator for the "On Play" effect timing.
+    PlayCard, 
     ActivateCardEffect,
     AttachDon,
-    Battle, // This is also used in `Effect::TimedEffect` as an indicator for the "When Attacking" effect timing.
+    Battle, 
 }
 
 pub const MAX_CHARACTER_AREA: i32 = 5;
 
-
+#[derive(Debug, Clone)]
+pub enum Timing {
+    OnPlay,
+    WhenAttacking,
+    ActivateMain,
+}
 
 ///effects: vec![Effect::Blocker, Effect::TimedEffect(MainPhaseAction::PlayCard, EffectCost::MinusDon(2), Effect::Draw(2))]
 
 #[derive(Debug, Clone)]
 pub enum Effect {
     Blocker,
-    TimedEffect(MainPhaseAction, EffectCost, Box<Effect>),
+    TimedEffect(Timing, EffectCost, Box<Effect>),
     Draw(i32),
 }
 
