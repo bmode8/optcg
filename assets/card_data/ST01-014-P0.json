@@ -1,0 +1,42 @@
+{
+  "name": "Guard Point",
+  "identifier": "ST01-014",
+  "art": "P0",
+  "cost": 1,
+  "category": "Event",
+  "power": null,
+  "counter_power": null,
+  "attribute": [],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Animal",
+    "Straw Hat Crew"
+  ],
+  "effects": [
+    {
+      "TimedEffect": [
+        "CounterPhase",
+        "Zero",
+        [
+          {
+            "PlusPowerForBattle": 3000
+          }
+        ]
+      ]
+    },
+    {
+      "TimedEffect": [
+        "Trigger",
+        "Zero",
+        [
+          {
+            "PlusPower": 1000
+          }
+        ]
+      ]
+    }
+  ],
+  "attached_don": []
+}

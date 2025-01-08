@@ -6,24 +6,23 @@ use std::io::Write;
 use std::sync::mpsc::{channel, Sender, Receiver};
 
 use serde::{Serialize, Deserialize};
+use serde_json::map::Entry;
 
 fn main() {
-    let franky = Card {
-        name: "Franky".to_string(),
-        identifier: "OP09-072".to_string(),
-        art: "P1".to_string(),
-        cost: CardCost(4),
-        category: CardCategory::Character,
-        power: Some(CardPower(5000)),
-        counter_power: Some(CounterPower(1000)),
-        attribute: vec![Attribute::Strike],
-        color: vec![CardColor::Purple],
-        types: vec!["Straw Hat Crew".to_string()],
-        effects: vec![Effect::Blocker, Effect::TimedEffect(Timing::OnPlay, EffectCost::MinusDon(2), Box::new(Effect::Draw(2)))],
-        attached_don: vec![],
-    };
 
-    let basic_don = Card {
+    install_card_data();
+}
+
+fn install_card_data() {
+    #![allow(non_snake_case)]
+    use CardCategory::*;
+    use CardColor::*;
+    use Attribute::*;
+    use Effect::*;
+    use EffectCost::*;
+    use Timing::*;
+    
+    let DON_don = Card {
         name: "Your Turn +1000".to_string(),
         identifier: "DON-don".to_string(),
         art: "P0".to_string(),
@@ -38,15 +37,210 @@ fn main() {
         attached_don: vec![],
     };
 
-    let franky_serial = serde_json::to_string_pretty(&franky).unwrap();
+    let ST01_001 = Card::new(
+        "Monkey D. Luffy".to_string(),
+        "ST01-001".to_string(), 
+        "P0".to_string(), 
+        CardCost(0), 
+        Leader, 
+        Some(CardPower(5000)), 
+        None, 
+        vec![Strike], 
+        vec![Red], 
+        vec!["Supernovas".to_string(), "Straw Hat Crew".to_string()],
+        vec![TimedEffect(ActivateMain, Zero, vec![OncePerTurn, GiveRestedDon(1)])]);
     
-    let deck = vec![franky.clone(), franky.clone(), franky.clone(), franky.clone()];
+    let ST01_002 = Card::new(
+        "Usopp".to_string(),
+        "ST01-002".to_string(), 
+        "P0".to_string(), 
+        CardCost(2), 
+        Character, 
+        Some(CardPower(2000)), 
+        Some(CounterPower(1000)), 
+        vec![Ranged], 
+        vec![Red], 
+        vec!["Straw Hat Crew".to_string()],
+        vec![TimedEffect(WhenAttacking, DonAttached(1), vec![OpponentNoBlocker(Condition::PowerAndAbove(5000))]),
+             TimedEffect(Trigger, Zero, vec![PlayCard])]);
     
-    println!("{:?}", deck);
+    let ST01_003 = Card::new(   
+        "Carue".to_string(),
+        "ST01-003".to_string(), 
+        "P0".to_string(), 
+        CardCost(1), 
+        Character, 
+        Some(CardPower(3000)), 
+        Some(CounterPower(1000)), 
+        vec![Strike], 
+        vec![Red], 
+        vec!["Animal".to_string(), "Alabasta".to_string()],
+        vec![]);
 
-    let mut file = File::create("assets/card_data/OP09-072-P0.json").unwrap();
-    file.write(franky_serial.as_bytes()).unwrap();
+    let ST01_004 = Card::new(
+        "Sanji".to_string(),
+        "ST01-004".to_string(), 
+        "P0".to_string(), 
+        CardCost(2), 
+        Character, 
+        Some(CardPower(4000)), 
+        None, 
+        vec![Strike], 
+        vec![Red], 
+        vec!["Straw Hat Crew".to_string()],
+        vec![TimedEffect(DuringTurn, DonAttached(2), vec![Rush])]);
+    
+    let ST01_005 = Card::new(
+        "Jinbe".to_string(),
+        "ST01-005".to_string(), 
+        "P0".to_string(), 
+        CardCost(3), 
+        Character, 
+        Some(CardPower(5000)), 
+        None, 
+        vec![Strike], 
+        vec![Red], 
+        vec!["Fish-Man".to_string(), "Straw Hat Crew".to_string()],
+        vec![TimedEffect(WhenAttacking, DonAttached(1), vec![GiveOtherCardPower(1000)])]);
 
+    let ST01_008 = Card::new(
+        "Nico Robin".to_string(),
+        "ST01-008".to_string(), 
+        "P0".to_string(), 
+        CardCost(3), 
+        Character, 
+        Some(CardPower(5000)), 
+        Some(CounterPower(1000)), 
+        vec![Wisdom], 
+        vec![Red], 
+        vec!["Straw Hat Crew".to_string()],
+        vec![]);
+
+    let ST01_009 = Card::new(
+        "Nefertari Vivi".to_string(),
+        "ST01-009".to_string(), 
+        "P0".to_string(), 
+        CardCost(2), 
+        Character, 
+        Some(CardPower(4000)), 
+        Some(CounterPower(1000)), 
+        vec![Slash], 
+        vec![Red], 
+        vec!["Alabasta".to_string()],
+        vec![]);
+
+    let ST01_010 = Card::new(
+        "Franky".to_string(),
+        "ST01-010".to_string(), 
+        "P0".to_string(), 
+        CardCost(4), 
+        Character, 
+        Some(CardPower(6000)), 
+        Some(CounterPower(1000)), 
+        vec![Strike], 
+        vec![Red], 
+        vec!["Straw Hat Crew".to_string()],
+        vec![]);
+
+    let ST01_011 = Card::new(
+        "Brook".to_string(),
+        "ST01-011".to_string(), 
+        "P0".to_string(), 
+        CardCost(2), 
+        Character, 
+        Some(CardPower(3000)), 
+        Some(CounterPower(2000)), 
+        vec![Slash], 
+        vec![Red], 
+        vec!["Straw Hat Crew".to_string()],
+        vec![TimedEffect(OnPlay, Zero, vec![GiveRestedDon(2)])]);
+
+    let ST01_012 = Card::new(
+        "Monkey D. Luffy".to_string(),
+        "ST01-012".to_string(), 
+        "P0".to_string(), 
+        CardCost(5), 
+        Character, 
+        Some(CardPower(6000)), 
+        None, 
+        vec![Strike], 
+        vec![Red], 
+        vec!["Supernovas".to_string(), "Straw Hat Crew".to_string()],
+        vec![Rush, TimedEffect(WhenAttacking, DonAttached(2), vec![OpponentNoBlocker(Condition::None)])]);
+    
+    let ST01_013 = Card::new(
+        "Roronoa Zoro".to_string(), 
+        "ST01-013".to_string(), 
+        "P0".to_string(), 
+        CardCost(3), 
+        Character, 
+        Some(CardPower(5000)), 
+        None, 
+        vec![Slash], 
+        vec![Red], 
+        vec!["Supernovas".to_string(), "Straw Hat Crew".to_string()],
+        vec![TimedEffect(DuringTurn, DonAttached(1), vec![PlusPower(1000)])]);
+
+    let ST01_014 = Card::new(
+        "Guard Point".to_string(), 
+        "ST01-014".to_string(), 
+        "P0".to_string(), 
+        CardCost(1), 
+        Event, 
+        None, 
+        None, 
+        vec![], 
+        vec![Red], 
+        vec!["Animal".to_string(), "Straw Hat Crew".to_string()],
+        vec![TimedEffect(CounterPhase, Zero, vec![PlusPowerForBattle(3000)]),
+             TimedEffect(Trigger, Zero, vec![PlusPower(1000)])]);
+
+    let ST01_015 = Card::new(
+        "Jet Pistol".to_string(), 
+        "ST01-015".to_string(), 
+        "P0".to_string(), 
+        CardCost(4), 
+        Event, 
+        None, 
+        None, 
+        vec![], 
+        vec![Red], 
+        vec!["Supernovas".to_string(), "Straw Hat Crew".to_string()],
+        vec![TimedEffect(Main, Zero, vec![KnockOutWithPowerLessThan(6000)]),
+             TimedEffect(Trigger, Zero, vec![KnockOutWithPowerLessThan(6000)])]);
+    
+    let OP09_072 = Card {
+        name: "Franky".to_string(),
+        identifier: "OP09-072".to_string(),
+        art: "P1".to_string(),
+        cost: CardCost(4),
+        category: CardCategory::Character,
+        power: Some(CardPower(5000)),
+        counter_power: Some(CounterPower(1000)),
+        attribute: vec![Attribute::Strike],
+        color: vec![CardColor::Purple],
+        types: vec!["Straw Hat Crew".to_string()],
+        effects: vec![Effect::Blocker, Effect::TimedEffect(Timing::OnPlay, EffectCost::MinusDon(2), vec![Effect::Draw(2)])],
+        attached_don: vec![],
+    };
+
+    let current_cards = vec![DON_don, ST01_001, ST01_002, ST01_003, ST01_004, ST01_005, ST01_008, 
+        ST01_009, ST01_010, ST01_011, ST01_012, ST01_013, ST01_014, ST01_015, OP09_072];
+    
+    for card in current_cards {
+        match card.category {
+            CardCategory::Don => { 
+                let filename = format!("{}.json", card.identifier);
+                let card_data = serde_json::to_string_pretty(&card).unwrap();
+                std::fs::write(format!("assets/card_data/{}", filename), card_data).unwrap();
+            }
+            _ => {
+                let filename = format!("{}-{}.json", card.identifier, card.art);
+                let card_data = serde_json::to_string_pretty(&card).unwrap();
+                std::fs::write(format!("assets/card_data/{}", filename), card_data).unwrap();
+            }
+        }
+    }
 }
 
 fn parse_deck_list(deck_list: &str) -> Result<(Card, Vec<Card>, Vec<Card>), DeckParseError> {
@@ -63,10 +257,6 @@ fn parse_deck_list(deck_list: &str) -> Result<(Card, Vec<Card>, Vec<Card>), Deck
 
     let mut deck_list_entries: Vec<DeckListEntry> = vec![];
 
-    fn is_comment(line: &str) -> bool {
-        line.starts_with("//")
-    }
-
     for line in deck_list.lines() {
         if is_comment(line) {
             continue;
@@ -78,7 +268,7 @@ fn parse_deck_list(deck_list: &str) -> Result<(Card, Vec<Card>, Vec<Card>), Deck
         match line_contents.len() {
             n if n < 3 => return Err(DeckParseError::IncompleteLine(line.to_string())),
             3 => art = "P0".to_string(),
-            4 => art = line_contents[3].to_string(),
+            4 => art = parse_art(line_contents[3])?,
             n if n > 4 => return Err(DeckParseError::TooManyFields(line.to_string())),
             _ => unreachable!()
         };
@@ -97,10 +287,50 @@ fn parse_deck_list(deck_list: &str) -> Result<(Card, Vec<Card>, Vec<Card>), Deck
         deck_list_entries.push(entry);
     }
 
+    let mut cards_used_in_deck: Vec<Card> = vec![];
+
+    for entry in deck_list_entries.iter() {
+        let filename = format!("{}-{}.json", entry.id, entry.art);
+        let card_data = std::fs::read_to_string(format!("assets/card_data/{}", filename)).unwrap();
+        let card: Card = serde_json::from_str(&card_data).unwrap();
+        cards_used_in_deck.push(card);
+    }
+
     todo!();
 }
 
+fn is_comment(line: &str) -> bool {
+    line.starts_with("//")
+}
+
+fn parse_art(art: &str) -> Result<String, DeckParseError> {
+    // Should be formatted as simply wrapped in parentheses.
+
+    let mut art = String::from(art);
+    let mut art_iter = art.chars();
+    if let Some(first_char) = art_iter.next() {
+        match first_char {
+            '(' => (),
+            _ => return Err(DeckParseError::ArtSyntaxError(art.to_string())),
+        }
+    } else {
+        return Err(DeckParseError::ArtSyntaxError(art.to_string()));
+    };
+
+    if let Some(last_char) = art_iter.next_back() {
+        match last_char {
+            ')' => (),
+            _ => return Err(DeckParseError::ArtSyntaxError(art.to_string())),
+        }
+    } else {
+        return Err(DeckParseError::ArtSyntaxError(art.to_string()));
+    };
+
+    Ok(art_iter.collect())
+}
+
 pub enum DeckParseError {
+    ArtSyntaxError(String),
     NoLeader,
     TooManyLeaders,
     TooManyCopies(i32), // Max number of any particular card id in the main deck is 4 copies.
@@ -167,6 +397,25 @@ pub struct Card {
     pub types: Vec<String>, // Some cards have more than one type.
     pub effects: Vec<Effect>, 
     pub attached_don: Deck, // Only Leader and Character cards can have a don attached
+}
+
+impl Card {
+    pub fn new(name: String, identifier: String, art: String, cost: CardCost, category: CardCategory, power: Option<CardPower>, counter_power: Option<CounterPower>, attribute: Vec<Attribute>, color: Vec<CardColor>, types: Vec<String>, effects: Vec<Effect>) -> Card {
+        Card {
+            name,
+            identifier,
+            art,
+            cost,
+            category,
+            power,
+            counter_power,
+            attribute,
+            color,
+            types,
+            effects,
+            attached_don: vec![]
+        }
+    }
 }
 
 pub type Deck = Vec<Card>;
@@ -284,7 +533,10 @@ pub enum Timing {
     OnPlay,
     WhenAttacking,
     ActivateMain,
+    Main, // basically ActivateMain, but for event cards.
     CounterPhase,
+    DuringTurn,
+    Trigger,
 }
 
 
@@ -292,10 +544,22 @@ pub enum Timing {
 pub enum Effect {
     Blocker,
     Draw(i32),
+    GiveOtherCardPower(i32),
+    GiveRestedDon(i32),
+    KnockOutWithPowerLessThan(i32),
     OncePerTurn,
+    OpponentNoBlocker(Condition),
+    PlayCard,
     PlusPower(i32),
+    PlusPowerForBattle(i32),
     Rush,
-    TimedEffect(Timing, EffectCost, Box<Effect>),
+    TimedEffect(Timing, EffectCost, Vec<Effect>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Condition {
+    None,
+    PowerAndAbove(i32),
 }
 
 
@@ -303,7 +567,7 @@ pub enum Effect {
 pub enum EffectCost {
     MinusDon(i32),
     RestDon(i32),
-    DonAttached(Box<Card>, i32),
+    DonAttached(i32),
     Zero, // Needed for timed effects that don't require a cost, makes more sense than doing `Option<EffectCost>` everywhere.
 }
 
@@ -384,7 +648,10 @@ mod display_implementations {
                 OnPlay => val = "On Play".into(),
                 WhenAttacking => val = "When Attacking".into(),
                 ActivateMain => val = "Activate:Main".into(),
+                Main => val = "Main".into(),
                 CounterPhase => val = "Counter".into(),
+                DuringTurn => val = "".into(),
+                Trigger => val = "Trigger".into(),
             }
             write!(f, "{val}")?;
             Ok(())
@@ -397,7 +664,7 @@ mod display_implementations {
             match self {
                 MinusDon(n) => write!(f, "DON!! -{}", n)?,
                 RestDon(n) => write!(f, "{n}")?,
-                DonAttached(_, n) => write!(f, "DON!!x{n}")?,
+                DonAttached(n) => write!(f, "DON!!x{n}")?,
                 Zero => write!(f, "")?,
             }
 
@@ -410,11 +677,17 @@ mod display_implementations {
             use Effect::*;
             match self {
                 Blocker => write!(f, "Blocker")?,
-                TimedEffect(timing, cost, effect) => write!(f, "{} {} {}", timing, cost, effect)?,
+                TimedEffect(timing, cost, effect) => write!(f, "{} {} {:#?}", timing, cost, effect)?,
                 Draw(i) => write!(f, "Draw {}", i)?,
+                GiveOtherCardPower(i) => write!(f, "Give your Leader or 1 of your Characters other than this card +{i} power during this turn.")?,
+                GiveRestedDon(i) => write!(f, "Give this Leader or 1 of your Characters {i} rested DON!! card(s).")?,
+                KnockOutWithPowerLessThan(i) => write!(f, "K.O. 1 of your opponent's Characters with a power of {i} or less.")?,
                 OncePerTurn => write!(f, "Once Per Turn")?,
+                OpponentNoBlocker(condition) => write!(f, "Your opponent cannot activate Blocker of {:?} during this battle.", condition)?,
                 Rush => write!(f, "Rush")?,
+                PlayCard => write!(f, "Play this card.")?,
                 PlusPower(i) => write!(f, "+{i}")?,
+                PlusPowerForBattle(i) => write!(f, "Your Leader or 1 of your Characters gains +{i} for this battle.")?,
             }
             Ok(())
         }

@@ -1,0 +1,21 @@
+{
+  "name": "Carue",
+  "identifier": "ST01-003",
+  "art": "P0",
+  "cost": 1,
+  "category": "Character",
+  "power": 3000,
+  "counter_power": 1000,
+  "attribute": [
+    "Strike"
+  ],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Animal",
+    "Alabasta"
+  ],
+  "effects": [],
+  "attached_don": []
+}

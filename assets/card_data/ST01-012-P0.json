@@ -1,0 +1,36 @@
+{
+  "name": "Monkey D. Luffy",
+  "identifier": "ST01-012",
+  "art": "P0",
+  "cost": 5,
+  "category": "Character",
+  "power": 6000,
+  "counter_power": null,
+  "attribute": [
+    "Strike"
+  ],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Supernovas",
+    "Straw Hat Crew"
+  ],
+  "effects": [
+    "Rush",
+    {
+      "TimedEffect": [
+        "WhenAttacking",
+        {
+          "DonAttached": 2
+        },
+        [
+          {
+            "OpponentNoBlocker": "None"
+          }
+        ]
+      ]
+    }
+  ],
+  "attached_don": []
+}

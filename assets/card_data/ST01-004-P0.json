@@ -1,0 +1,32 @@
+{
+  "name": "Sanji",
+  "identifier": "ST01-004",
+  "art": "P0",
+  "cost": 2,
+  "category": "Character",
+  "power": 4000,
+  "counter_power": null,
+  "attribute": [
+    "Strike"
+  ],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Straw Hat Crew"
+  ],
+  "effects": [
+    {
+      "TimedEffect": [
+        "DuringTurn",
+        {
+          "DonAttached": 2
+        },
+        [
+          "Rush"
+        ]
+      ]
+    }
+  ],
+  "attached_don": []
+}

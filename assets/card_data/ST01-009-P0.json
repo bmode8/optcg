@@ -1,0 +1,20 @@
+{
+  "name": "Nefertari Vivi",
+  "identifier": "ST01-009",
+  "art": "P0",
+  "cost": 2,
+  "category": "Character",
+  "power": 4000,
+  "counter_power": 1000,
+  "attribute": [
+    "Slash"
+  ],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Alabasta"
+  ],
+  "effects": [],
+  "attached_don": []
+}

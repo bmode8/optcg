@@ -1,0 +1,45 @@
+{
+  "name": "Usopp",
+  "identifier": "ST01-002",
+  "art": "P0",
+  "cost": 2,
+  "category": "Character",
+  "power": 2000,
+  "counter_power": 1000,
+  "attribute": [
+    "Ranged"
+  ],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Straw Hat Crew"
+  ],
+  "effects": [
+    {
+      "TimedEffect": [
+        "WhenAttacking",
+        {
+          "DonAttached": 1
+        },
+        [
+          {
+            "OpponentNoBlocker": {
+              "PowerAndAbove": 5000
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "TimedEffect": [
+        "Trigger",
+        "Zero",
+        [
+          "PlayCard"
+        ]
+      ]
+    }
+  ],
+  "attached_don": []
+}

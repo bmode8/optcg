@@ -1,0 +1,32 @@
+{
+  "name": "Brook",
+  "identifier": "ST01-011",
+  "art": "P0",
+  "cost": 2,
+  "category": "Character",
+  "power": 3000,
+  "counter_power": 2000,
+  "attribute": [
+    "Slash"
+  ],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Straw Hat Crew"
+  ],
+  "effects": [
+    {
+      "TimedEffect": [
+        "OnPlay",
+        "Zero",
+        [
+          {
+            "GiveRestedDon": 2
+          }
+        ]
+      ]
+    }
+  ],
+  "attached_don": []
+}

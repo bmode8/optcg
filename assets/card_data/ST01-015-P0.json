@@ -1,0 +1,42 @@
+{
+  "name": "Jet Pistol",
+  "identifier": "ST01-015",
+  "art": "P0",
+  "cost": 4,
+  "category": "Event",
+  "power": null,
+  "counter_power": null,
+  "attribute": [],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Supernovas",
+    "Straw Hat Crew"
+  ],
+  "effects": [
+    {
+      "TimedEffect": [
+        "Main",
+        "Zero",
+        [
+          {
+            "KnockOutWithPowerLessThan": 6000
+          }
+        ]
+      ]
+    },
+    {
+      "TimedEffect": [
+        "Trigger",
+        "Zero",
+        [
+          {
+            "KnockOutWithPowerLessThan": 6000
+          }
+        ]
+      ]
+    }
+  ],
+  "attached_don": []
+}

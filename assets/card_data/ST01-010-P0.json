@@ -1,0 +1,20 @@
+{
+  "name": "Franky",
+  "identifier": "ST01-010",
+  "art": "P0",
+  "cost": 4,
+  "category": "Character",
+  "power": 6000,
+  "counter_power": 1000,
+  "attribute": [
+    "Strike"
+  ],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Straw Hat Crew"
+  ],
+  "effects": [],
+  "attached_don": []
+}

@@ -1,0 +1,35 @@
+{
+  "name": "Roronoa Zoro",
+  "identifier": "ST01-013",
+  "art": "P0",
+  "cost": 3,
+  "category": "Character",
+  "power": 5000,
+  "counter_power": null,
+  "attribute": [
+    "Slash"
+  ],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Supernovas",
+    "Straw Hat Crew"
+  ],
+  "effects": [
+    {
+      "TimedEffect": [
+        "DuringTurn",
+        {
+          "DonAttached": 1
+        },
+        [
+          {
+            "PlusPower": 1000
+          }
+        ]
+      ]
+    }
+  ],
+  "attached_don": []
+}
