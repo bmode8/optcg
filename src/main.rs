@@ -9,7 +9,6 @@ use serde::{Serialize, Deserialize};
 use serde_json::map::Entry;
 
 fn main() {
-
     install_card_data();
 }
 
