@@ -1,0 +1,33 @@
+{
+  "name": "Nami",
+  "identifier": "ST01-007",
+  "art": "P0",
+  "cost": 1,
+  "category": "Character",
+  "power": 1000,
+  "counter_power": 1000,
+  "attribute": [
+    "Special"
+  ],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Straw Hat Crew"
+  ],
+  "effects": [
+    {
+      "TimedEffect": [
+        "ActivateMain",
+        "Zero",
+        [
+          "OncePerTurn",
+          {
+            "GiveRestedDon": 1
+          }
+        ]
+      ]
+    }
+  ],
+  "attached_don": []
+}

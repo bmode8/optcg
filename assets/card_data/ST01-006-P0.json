@@ -1,0 +1,23 @@
+{
+  "name": "Tony Tony Chopper",
+  "identifier": "ST01-006",
+  "art": "P0",
+  "cost": 1,
+  "category": "Character",
+  "power": 1000,
+  "counter_power": null,
+  "attribute": [
+    "Strike"
+  ],
+  "color": [
+    "Red"
+  ],
+  "types": [
+    "Animal",
+    "Straw Hat Crew"
+  ],
+  "effects": [
+    "Blocker"
+  ],
+  "attached_don": []
+}
