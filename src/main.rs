@@ -2,8 +2,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
-use std::io::{Read, Write};
-use std::rc::{Rc, Weak};
+use std::io::{stdin, Read, Write};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use serde::{Deserialize, Serialize};
@@ -16,10 +15,6 @@ fn main() {
     deck_list_file.read_to_string(&mut deck_list).unwrap();
 
     let (leader, main_deck, don_deck) = parse_deck_list(deck_list.as_str()).unwrap();
-
-    println!("{}", leader);
-    println!("{:?}", main_deck);
-    println!("{:?}", don_deck);
 
     let player_1 = Player {
         name: "Player 1".into(),
@@ -431,8 +426,8 @@ fn parse_deck_list(deck_list: &str) -> Result<(Card, Deck, Deck), DeckError> {
 
     Ok((
         cards_used_in_deck.iter().find(|card| card.is_leader()).unwrap().clone(),
-        cards_used_in_deck.iter().filter(|card| card.is_don()).map(|card| card.clone()).collect::<Vec<Card>>(),
         cards_used_in_deck.iter().filter(|card| !card.is_don() && !card.is_leader()).map(|card| card.clone()).collect::<Vec<Card>>(),
+        cards_used_in_deck.iter().filter(|card| card.is_don()).map(|card| card.clone()).collect::<Vec<Card>>(),
     ))
 }
 
@@ -704,9 +699,33 @@ impl Player {
 }
 
 pub struct PlayerClient {
-    pub player: Weak<Player>,
+    pub player: Box<Player>,
     pub tx: Sender<PlayerAction>,
     pub rx: Receiver<ServerMessage>,
+}
+
+impl PlayerClient {
+    pub fn handle_message(&self) {
+        let message = self.rx.recv().unwrap();
+        match message {
+            ServerMessage::QueryMulligan => {
+                self.respond_to_query_mulligan();
+            }
+        }
+    }
+
+    pub fn respond_to_query_mulligan(&self) {
+        println!("Hand: {:#?}", self.player.hand);
+        println!("Mulligan? [y/N]  ");
+        let mut input = String::new();
+        stdin().read_line(&mut input).unwrap();
+
+        match input.trim().to_lowercase().as_str() {
+            "y" => self.tx.send(PlayerAction::TakeMulligan).unwrap(),
+            "n" | "" => self.tx.send(PlayerAction::NoAction).unwrap(),
+            _ => self.respond_to_query_mulligan(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -717,8 +736,8 @@ pub enum Turn {
 
 pub struct PlayField {
     pub turn: Turn,
-    pub player_1: Rc<Player>,
-    pub player_2: Rc<Player>,
+    pub player_1: Box<Player>,
+    pub player_2: Box<Player>,
     pub p1_sender: Sender<ServerMessage>,
     pub p2_sender: Sender<ServerMessage>,
     pub p1_receiver: Receiver<PlayerAction>,
@@ -750,8 +769,24 @@ impl PlayField {
 
         player_1.draw(5).unwrap();
         player_2.draw(5).unwrap();
+        
+        let mut player_1 = Box::new(player_1);
+        let mut player_2 = Box::new(player_2);
+
+        let player_1_client = PlayerClient {
+            player: player_1.clone(),
+            tx: p1_client_sender,
+            rx: p1_server_receiver,
+        };
+
+        let player_2_client = PlayerClient {
+            player: player_2.clone(),
+            tx: p2_client_sender,
+            rx: p2_server_receiver,
+        };
 
         p1_sender.send(ServerMessage::QueryMulligan).unwrap();
+        player_1_client.handle_message();
         let p1_mulligan = p1_receiver.recv().unwrap();
 
         if let PlayerAction::TakeMulligan = p1_mulligan {
@@ -761,6 +796,7 @@ impl PlayField {
         }
 
         p2_sender.send(ServerMessage::QueryMulligan).unwrap();
+        player_2_client.handle_message();
         let p2_mulligan = p2_receiver.recv().unwrap();
 
         if let PlayerAction::TakeMulligan = p2_mulligan {
@@ -774,13 +810,6 @@ impl PlayField {
 
         let p1_life = player_1.draw_out(player_1.leader.life()).unwrap();
         let p2_life = player_2.draw_out(player_2.leader.life()).unwrap();
-
-
-        let player_1 = Rc::new(player_1);
-        let player_2 = Rc::new(player_2);
-
-        let player_1_weak = Rc::downgrade(&player_1);
-        let player_2_weak = Rc::downgrade(&player_2);
 
         (
             PlayField {
@@ -804,16 +833,8 @@ impl PlayField {
                 p1_rested_don_area: Deck::new(),
                 p2_rested_don_area: Deck::new(),
             },
-            PlayerClient {
-                player: player_1_weak,
-                tx: p1_client_sender,
-                rx: p1_server_receiver,
-            },
-            PlayerClient {
-                player: player_2_weak,
-                tx: p2_client_sender,
-                rx: p2_server_receiver,
-            },
+            player_1_client,
+            player_2_client,
         )
     }
 
