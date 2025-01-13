@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::rc::{Rc, Weak};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use serde::{Deserialize, Serialize};
@@ -19,6 +20,36 @@ fn main() {
     println!("{}", leader);
     println!("{:?}", main_deck);
     println!("{:?}", don_deck);
+
+    let player_1 = Player {
+        name: "Player 1".into(),
+        leader: leader.clone(),
+        main_deck: main_deck.clone(),
+        don_deck: don_deck.clone(),
+        hand: vec![],
+        trash: vec![],
+    };
+    
+    let player_2 = Player {
+        name: "Player 2".into(),
+        leader: leader.clone(),
+        main_deck: main_deck.clone(),
+        don_deck: don_deck.clone(),
+        hand: vec![],
+        trash: vec![],
+    };
+
+    let (mut play_field, p1_client, p2_client) = PlayField::setup(player_1, player_2);
+
+    loop {
+        let winner: Option<Turn> = play_field.check_loser(); // `Turn` is a unique representation of each player, so it works best here.
+        if let Some(winner) = winner {
+            println!("Player {:?} wins!", winner);
+            break;
+        }
+
+        play_field.step();
+    }
 }
 
 fn install_card_data() {
@@ -50,7 +81,7 @@ fn install_card_data() {
         "ST01-001".to_string(),
         "P0".to_string(),
         CardCost(0),
-        Leader,
+        Leader(5),
         Some(CardPower(5000)),
         None,
         vec![Strike],
@@ -330,7 +361,7 @@ fn install_card_data() {
     }
 }
 
-fn parse_deck_list(deck_list: &str) -> Result<(Card, Vec<Card>, Vec<Card>), DeckError> {
+fn parse_deck_list(deck_list: &str) -> Result<(Card, Deck, Deck), DeckError> {
     struct DeckListEntry {
         quantity: i32,
         id: String,
@@ -521,7 +552,7 @@ pub struct CounterPower(i32);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum CardCategory {
-    Leader,
+    Leader(i32), // Leader cards have a unique life total that cannot be determined from other data.
     Character,
     Event,
     Stage,
@@ -585,8 +616,15 @@ impl Card {
 
     pub fn is_leader(&self) -> bool {
         match self.category {
-            CardCategory::Leader => true,
+            CardCategory::Leader(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn life(&self) -> i32 {
+        match self.category {
+            CardCategory::Leader(n) => n,
+            _ => 0,
         }
     }
 
@@ -610,15 +648,77 @@ pub struct Player {
     pub trash: Deck,
 }
 
+impl Player {
+    pub fn draw(&mut self, n: i32) -> Result<(), ()>{
+        for _ in 0..n {
+            let drawn_card = self.main_deck.pop();
+
+            if drawn_card.is_none() {
+                return Err(());
+            }
+
+            self.hand.push(drawn_card.unwrap());
+        }
+
+        Ok(())
+    }
+
+    pub fn draw_don(&mut self, n: i32) -> Deck {
+        let mut drawn_don = Deck::new();
+        for _ in 0..n {
+            let drawn_card = self.don_deck.pop();
+
+            if drawn_card.is_none() {
+                return drawn_don;
+            }
+
+            drawn_don.push(drawn_card.unwrap());
+        }
+
+        drawn_don
+    }
+
+    pub fn draw_out(&mut self, n: i32) -> Result<Deck, ()> {
+        let mut drawn_out = Deck::new();
+        for _ in 0..n {
+            let drawn_card = self.hand.pop();
+
+            if drawn_card.is_none() {
+                return Err(());
+            }
+
+            drawn_out.push(drawn_card.unwrap());
+        }
+
+        Ok(drawn_out)
+    }
+
+    pub fn topdeck_hand(&mut self) {
+        self.main_deck.append(&mut self.hand);
+        self.shuffle();
+    }
+
+    pub fn shuffle(&mut self) {
+        todo!()
+    }
+}
+
 pub struct PlayerClient {
-    pub player: Box<Player>,
+    pub player: Weak<Player>,
     pub tx: Sender<PlayerAction>,
     pub rx: Receiver<ServerMessage>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum Turn {
+    P1,
+    P2,
+}
+
 pub struct PlayField {
-    pub player_1: Box<Player>,
-    pub player_2: Box<Player>,
+    pub turn: Turn,
+    pub player_1: Rc<Player>,
+    pub player_2: Rc<Player>,
     pub p1_sender: Sender<ServerMessage>,
     pub p2_sender: Sender<ServerMessage>,
     pub p1_receiver: Receiver<PlayerAction>,
@@ -631,10 +731,6 @@ pub struct PlayField {
     pub p2_character_area: Deck,
     pub p1_rested_character_area: Deck,
     pub p2_rested_character_area: Deck,
-    pub p1_main_deck_count: i32,
-    pub p2_main_deck_count: i32,
-    pub p1_don_deck_count: i32,
-    pub p2_don_deck_count: i32,
     pub p1_active_don_area: Deck,
     pub p2_active_don_area: Deck,
     pub p1_rested_don_area: Deck,
@@ -643,8 +739,8 @@ pub struct PlayField {
 
 impl PlayField {
     pub fn setup(
-        player_1: Box<Player>,
-        player_2: Box<Player>,
+        mut player_1: Player,
+        mut player_2: Player,
     ) -> (PlayField, PlayerClient, PlayerClient) {
         let (p1_sender, p1_server_receiver) = channel();
         let (p2_sender, p2_server_receiver) = channel();
@@ -652,47 +748,94 @@ impl PlayField {
         let (p1_client_sender, p1_receiver) = channel();
         let (p2_client_sender, p2_receiver) = channel();
 
+        player_1.draw(5).unwrap();
+        player_2.draw(5).unwrap();
+
+        p1_sender.send(ServerMessage::QueryMulligan).unwrap();
+        let p1_mulligan = p1_receiver.recv().unwrap();
+
+        if let PlayerAction::TakeMulligan = p1_mulligan {
+            player_1.topdeck_hand();
+            player_1.shuffle();
+            player_1.draw(5).unwrap();
+        }
+
+        p2_sender.send(ServerMessage::QueryMulligan).unwrap();
+        let p2_mulligan = p2_receiver.recv().unwrap();
+
+        if let PlayerAction::TakeMulligan = p2_mulligan {
+            player_2.topdeck_hand();
+            player_2.shuffle();
+            player_2.draw(5).unwrap();
+        }
+
+        // Begin turn 1.
+        let p1_don = player_1.draw_don(1);
+
+        let p1_life = player_1.draw_out(player_1.leader.life()).unwrap();
+        let p2_life = player_2.draw_out(player_2.leader.life()).unwrap();
+
+
+        let player_1 = Rc::new(player_1);
+        let player_2 = Rc::new(player_2);
+
+        let player_1_weak = Rc::downgrade(&player_1);
+        let player_2_weak = Rc::downgrade(&player_2);
+
         (
             PlayField {
-                player_1: player_1.clone(),
-                player_2: player_2.clone(),
+                turn: Turn::P1,
+                player_1,
+                player_2,
                 p1_sender,
                 p2_sender,
                 p1_receiver,
                 p2_receiver,
-                p1_life_area: Deck::new(),
-                p2_life_area: Deck::new(),
+                p1_life_area: p1_life,
+                p2_life_area: p2_life,
                 p1_stage_area: Deck::new(),
                 p2_stage_area: Deck::new(),
                 p1_character_area: Deck::new(),
                 p2_character_area: Deck::new(),
                 p1_rested_character_area: Deck::new(),
                 p2_rested_character_area: Deck::new(),
-                p1_main_deck_count: 0,
-                p2_main_deck_count: 0,
-                p1_don_deck_count: 0,
-                p2_don_deck_count: 0,
-                p1_active_don_area: Deck::new(),
+                p1_active_don_area: p1_don,
                 p2_active_don_area: Deck::new(),
                 p1_rested_don_area: Deck::new(),
                 p2_rested_don_area: Deck::new(),
             },
             PlayerClient {
-                player: player_1.clone(),
+                player: player_1_weak,
                 tx: p1_client_sender,
                 rx: p1_server_receiver,
             },
             PlayerClient {
-                player: player_2.clone(),
+                player: player_2_weak,
                 tx: p2_client_sender,
                 rx: p2_server_receiver,
             },
         )
     }
+
+    pub fn check_loser(&self) -> Option<Turn> {
+        todo!()
+    }
+
+    pub fn step(&mut self) {
+        todo!()
+    }
 }
 
-pub enum PlayerAction {}
-pub enum ServerMessage {}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PlayerAction {
+    TakeMulligan,
+    NoAction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ServerMessage {
+    QueryMulligan,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TurnPhase {
@@ -800,7 +943,7 @@ mod display_implementations {
             use CardCategory::*;
             let val: String;
             match self {
-                Leader => val = "Leader".into(),
+                Leader(_) => val = "Leader".into(),
                 Character => val = "Character".into(),
                 Event => val = "Event".into(),
                 Stage => val = "Stage".into(),
@@ -890,24 +1033,24 @@ mod display_implementations {
                 write!(f, "{}", att)?;
             }
             write!(f, "  |\n")?;
-            write!(f, "|                                    |\n")?;
-            write!(f, "|                                    |\n")?;
-            write!(f, "|                                    |\n")?;
-            write!(f, "|                                    |\n")?;
+            write!(f, "|                                    \n")?;
+            write!(f, "|                                    \n")?;
+            write!(f, "|                                    \n")?;
+            write!(f, "|                                    \n")?;
             write!(
                 f,
-                "|  {}                              |\n",
+                "|  {}                              \n",
                 self.counter_power.unwrap_or(CounterPower(0))
             )?;
-            write!(f, "|                                    |\n")?;
+            write!(f, "|                                    \n")?;
             for effect in self.effects.iter() {
-                write!(f, "|  {}  |\n", effect)?;
+                write!(f, "|  {}  \n", effect)?;
             }
             for i in 0..(5 - self.effects.len()) {
-                write!(f, "|                                    |\n")?;
+                write!(f, "|                                    \n")?;
             }
-            write!(f, "|               {}               |\n", self.category)?;
-            write!(f, "|               {}               |\n", self.name)?;
+            write!(f, "|               {}               \n", self.category)?;
+            write!(f, "|               {}               \n", self.name)?;
             write!(f, "| ")?;
             for c in self.color.iter() {
                 write!(f, "{} ", c)?;
@@ -916,7 +1059,7 @@ mod display_implementations {
             for t in self.types.iter() {
                 write!(f, " {} ", t)?;
             }
-            write!(f, "        |\n")?;
+            write!(f, "        \n")?;
             write!(f, "---------------------------------------\n")?;
 
             Ok(())

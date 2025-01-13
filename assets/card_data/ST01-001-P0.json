@@ -3,7 +3,9 @@
   "identifier": "ST01-001",
   "art": "P0",
   "cost": 0,
-  "category": "Leader",
+  "category": {
+    "Leader": 5
+  },
   "power": 5000,
   "counter_power": null,
   "attribute": [
