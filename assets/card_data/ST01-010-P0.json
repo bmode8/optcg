@@ -16,5 +16,6 @@
     "Straw Hat Crew"
   ],
   "effects": [],
-  "attached_don": []
+  "attached_don": [],
+  "facing": "FaceDown"
 }

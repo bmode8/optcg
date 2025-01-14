@@ -5,6 +5,8 @@ use std::fs::File;
 use std::io::{stdin, Read, Write};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
+use rand::prelude::*;
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 fn main() {
@@ -54,6 +56,7 @@ fn install_card_data() {
     use CardColor::*;
     use Effect::*;
     use EffectCost::*;
+    use Facing::*;
     use Timing::*;
 
     let DON_don = Card {
@@ -69,6 +72,7 @@ fn install_card_data() {
         types: vec![],
         effects: vec![Effect::PlusPower(1000)],
         attached_don: vec![],
+        facing: FaceDown,
     };
 
     let ST01_001 = Card::new(
@@ -87,6 +91,7 @@ fn install_card_data() {
             Zero,
             vec![OncePerTurn, GiveRestedDon(1)],
         )],
+        FaceDown,
     );
 
     let ST01_002 = Card::new(
@@ -108,6 +113,7 @@ fn install_card_data() {
             ),
             TimedEffect(Trigger, Zero, vec![PlayCard]),
         ],
+        FaceDown,
     );
 
     let ST01_003 = Card::new(
@@ -122,6 +128,7 @@ fn install_card_data() {
         vec![Red],
         vec!["Animal".to_string(), "Alabasta".to_string()],
         vec![],
+        FaceDown,
     );
 
     let ST01_004 = Card::new(
@@ -136,6 +143,7 @@ fn install_card_data() {
         vec![Red],
         vec!["Straw Hat Crew".to_string()],
         vec![TimedEffect(DuringTurn, DonAttached(2), vec![Rush])],
+        FaceDown
     );
 
     let ST01_005 = Card::new(
@@ -154,6 +162,7 @@ fn install_card_data() {
             DonAttached(1),
             vec![GiveOtherCardPower(1000)],
         )],
+        FaceDown
     );
 
     let ST01_006 = Card::new(
@@ -168,6 +177,7 @@ fn install_card_data() {
         vec![Red],
         vec!["Animal".into(), "Straw Hat Crew".into()], 
         vec![Blocker],
+        FaceDown,
     );
 
     let ST01_007 = Card::new(
@@ -182,6 +192,7 @@ fn install_card_data() {
         vec![Red],
         vec!["Straw Hat Crew".into()],
         vec![TimedEffect(ActivateMain, Zero, vec![OncePerTurn, GiveRestedDon(1)])],
+        FaceDown,
     );
 
     let ST01_008 = Card::new(
@@ -196,6 +207,7 @@ fn install_card_data() {
         vec![Red],
         vec!["Straw Hat Crew".to_string()],
         vec![],
+        FaceDown,
     );
 
     let ST01_009 = Card::new(
@@ -210,6 +222,7 @@ fn install_card_data() {
         vec![Red],
         vec!["Alabasta".to_string()],
         vec![],
+        FaceDown,
     );
 
     let ST01_010 = Card::new(
@@ -224,6 +237,7 @@ fn install_card_data() {
         vec![Red],
         vec!["Straw Hat Crew".to_string()],
         vec![],
+        FaceDown,
     );
 
     let ST01_011 = Card::new(
@@ -238,6 +252,7 @@ fn install_card_data() {
         vec![Red],
         vec!["Straw Hat Crew".to_string()],
         vec![TimedEffect(OnPlay, Zero, vec![GiveRestedDon(2)])],
+        FaceDown,
     );
 
     let ST01_012 = Card::new(
@@ -259,6 +274,7 @@ fn install_card_data() {
                 vec![OpponentNoBlocker(Condition::None)],
             ),
         ],
+        FaceDown
     );
 
     let ST01_013 = Card::new(
@@ -277,6 +293,7 @@ fn install_card_data() {
             DonAttached(1),
             vec![PlusPower(1000)],
         )],
+        FaceDown
     );
 
     let ST01_014 = Card::new(
@@ -294,6 +311,7 @@ fn install_card_data() {
             TimedEffect(CounterPhase, Zero, vec![PlusPowerForBattle(3000)]),
             TimedEffect(Trigger, Zero, vec![PlusPower(1000)]),
         ],
+        FaceDown
     );
 
     let ST01_015 = Card::new(
@@ -311,6 +329,7 @@ fn install_card_data() {
             TimedEffect(Main, Zero, vec![KnockOutWithPowerLessThan(6000)]),
             TimedEffect(Trigger, Zero, vec![KnockOutWithPowerLessThan(6000)]),
         ],
+        FaceDown
     );
 
     let OP09_072 = Card {
@@ -333,6 +352,7 @@ fn install_card_data() {
             ),
         ],
         attached_don: vec![],
+        facing: FaceDown,
     };
 
     let current_cards = vec![
@@ -563,6 +583,12 @@ pub enum Attribute {
     Wisdom,  // WS
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum Facing {
+    FaceUp,
+    FaceDown,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Card {
     pub name: String,
@@ -577,6 +603,7 @@ pub struct Card {
     pub types: Vec<String>,        // Some cards have more than one type.
     pub effects: Vec<Effect>,
     pub attached_don: Deck, // Only Leader and Character cards can have a don attached
+    pub facing: Facing,
 }
 
 impl Card {
@@ -592,6 +619,7 @@ impl Card {
         color: Vec<CardColor>,
         types: Vec<String>,
         effects: Vec<Effect>,
+        facing: Facing,
     ) -> Card {
         Card {
             name,
@@ -606,6 +634,7 @@ impl Card {
             types,
             effects,
             attached_don: vec![],
+            facing
         }
     }
 
@@ -628,6 +657,10 @@ impl Card {
             CardCategory::Don => true,
             _ => false,
         }
+    }
+
+    pub fn set_faceup(&mut self) {
+        self.facing = Facing::FaceUp;
     }
 }
 
@@ -690,21 +723,37 @@ impl Player {
 
     pub fn topdeck_hand(&mut self) {
         self.main_deck.append(&mut self.hand);
-        self.shuffle();
     }
 
-    pub fn shuffle(&mut self) {
-        todo!()
+    pub fn shuffle(&mut self, rng: &mut ThreadRng) {
+        self.main_deck.shuffle(rng);
+    }
+
+    pub fn turn_hand_faceup(&mut self) {
+        for card in self.hand.iter_mut() {
+            card.set_faceup();
+        }
     }
 }
 
-pub struct PlayerClient {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PlayerAction {
+    TakeMulligan,
+    NoAction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ServerMessage {
+    QueryMulligan,
+}
+
+pub struct MockPlayerClient {
     pub player: Box<Player>,
     pub tx: Sender<PlayerAction>,
     pub rx: Receiver<ServerMessage>,
 }
 
-impl PlayerClient {
+impl MockPlayerClient {
     pub fn handle_message(&self) {
         let message = self.rx.recv().unwrap();
         match message {
@@ -715,7 +764,10 @@ impl PlayerClient {
     }
 
     pub fn respond_to_query_mulligan(&self) {
-        println!("Hand: {:#?}", self.player.hand);
+        println!("Hand: ");
+        for card in self.player.hand.iter() {
+            println!("{}", card);
+        }
         println!("Mulligan? [y/N]  ");
         let mut input = String::new();
         stdin().read_line(&mut input).unwrap();
@@ -734,8 +786,12 @@ pub enum Turn {
     P2,
 }
 
+pub type PlayerId = Turn;
+
 pub struct PlayField {
     pub turn: Turn,
+    pub turn_phase: TurnPhase,
+    pub turn_n: i32,
     pub player_1: Box<Player>,
     pub player_2: Box<Player>,
     pub p1_sender: Sender<ServerMessage>,
@@ -754,18 +810,24 @@ pub struct PlayField {
     pub p2_active_don_area: Deck,
     pub p1_rested_don_area: Deck,
     pub p2_rested_don_area: Deck,
+    pub rng: ThreadRng,
 }
 
 impl PlayField {
     pub fn setup(
         mut player_1: Player,
         mut player_2: Player,
-    ) -> (PlayField, PlayerClient, PlayerClient) {
+    ) -> (PlayField, MockPlayerClient, MockPlayerClient) {
         let (p1_sender, p1_server_receiver) = channel();
         let (p2_sender, p2_server_receiver) = channel();
 
         let (p1_client_sender, p1_receiver) = channel();
         let (p2_client_sender, p2_receiver) = channel();
+
+        let mut rng = thread_rng();
+        
+        player_1.shuffle(&mut rng);
+        player_2.shuffle(&mut rng);
 
         player_1.draw(5).unwrap();
         player_2.draw(5).unwrap();
@@ -773,13 +835,13 @@ impl PlayField {
         let mut player_1 = Box::new(player_1);
         let mut player_2 = Box::new(player_2);
 
-        let player_1_client = PlayerClient {
+        let player_1_client = MockPlayerClient {
             player: player_1.clone(),
             tx: p1_client_sender,
             rx: p1_server_receiver,
         };
 
-        let player_2_client = PlayerClient {
+        let player_2_client = MockPlayerClient {
             player: player_2.clone(),
             tx: p2_client_sender,
             rx: p2_server_receiver,
@@ -791,7 +853,7 @@ impl PlayField {
 
         if let PlayerAction::TakeMulligan = p1_mulligan {
             player_1.topdeck_hand();
-            player_1.shuffle();
+            player_1.shuffle(&mut rng);
             player_1.draw(5).unwrap();
         }
 
@@ -801,19 +863,21 @@ impl PlayField {
 
         if let PlayerAction::TakeMulligan = p2_mulligan {
             player_2.topdeck_hand();
-            player_2.shuffle();
+            player_2.shuffle(&mut rng);
             player_2.draw(5).unwrap();
         }
 
-        // Begin turn 1.
-        let p1_don = player_1.draw_don(1);
-
         let p1_life = player_1.draw_out(player_1.leader.life()).unwrap();
         let p2_life = player_2.draw_out(player_2.leader.life()).unwrap();
+        
+        // Begin turn 1.
+        let p1_don = player_1.draw_don(1);
 
         (
             PlayField {
                 turn: Turn::P1,
+                turn_phase: TurnPhase::Refresh,
+                turn_n: 1,
                 player_1,
                 player_2,
                 p1_sender,
@@ -832,30 +896,76 @@ impl PlayField {
                 p2_active_don_area: Deck::new(),
                 p1_rested_don_area: Deck::new(),
                 p2_rested_don_area: Deck::new(),
+                rng,
             },
             player_1_client,
             player_2_client,
         )
     }
 
-    pub fn check_loser(&self) -> Option<Turn> {
+    pub fn check_loser(&self) -> Option<PlayerId> {
+        // Return `None` if there is no loser, otherwise
+        // return which of `P1` or `P2` lost.
+        let p1_deck_len = self.player_1.main_deck.len();
+        let p2_deck_len = self.player_2.main_deck.len();
+
+        if p1_deck_len == 0 && p2_deck_len == 0 {
+            panic!("Tie!??");
+        }
+
+        if p1_deck_len == 0 {
+            return Some(PlayerId::P1)
+        } else if p2_deck_len == 0 {
+            return Some(PlayerId::P2)
+        }
+
+        None
+    }
+
+    pub fn trigger_loser(&self) -> Option<PlayerId> {
         todo!()
     }
 
     pub fn step(&mut self) {
-        todo!()
+        use TurnPhase::*;
+
+        // Behold! A state machine!
+        match self.turn_phase {
+            Refresh => {
+                self.turn_phase = Draw;
+            },
+            Draw => {
+                match self.turn {
+                    Turn::P1 => {
+                        self.player_1.draw(1);
+                    }
+                    Turn::P2 => {
+                        self.player_2.draw(1);
+                    }
+                }
+                self.turn_phase = Don;
+            },
+            Don => {
+                self.turn_phase = Main;
+            },
+            Main => {
+                self.turn_phase = End;
+            },
+            BattleAttackStep => {},
+            BattleBlockStep => {},
+            BattleCounterStep => {},
+            BattleDamageStep => {},
+            BattleEnd => {},
+            End => {
+                self.turn_n += 1;
+                self.turn = match self.turn {
+                    Turn::P1 => Turn::P2,
+                    Turn::P2 => Turn::P1,
+                };
+                self.turn_phase = Refresh;
+            },
+        }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PlayerAction {
-    TakeMulligan,
-    NoAction,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ServerMessage {
-    QueryMulligan,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -864,6 +974,11 @@ pub enum TurnPhase {
     Draw,
     Don,
     Main,
+    BattleAttackStep,
+    BattleBlockStep,
+    BattleCounterStep,
+    BattleDamageStep,
+    BattleEnd,
     End,
 }
 
@@ -954,7 +1069,10 @@ mod display_implementations {
 
     impl fmt::Display for CounterPower {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.0)?;
+            match self.0 {
+                0 => (),
+                i => write!(f, "{i}")?,
+            }
             Ok(())
         }
     }
@@ -993,13 +1111,13 @@ mod display_implementations {
             use Timing::*;
             let val: String;
             match self {
-                OnPlay => val = "On Play".into(),
-                WhenAttacking => val = "When Attacking".into(),
-                ActivateMain => val = "Activate:Main".into(),
-                Main => val = "Main".into(),
-                CounterPhase => val = "Counter".into(),
+                OnPlay => val = "[On Play]".into(),
+                WhenAttacking => val = "[When Attacking]".into(),
+                ActivateMain => val = "[Activate:Main]".into(),
+                Main => val = "[Main]".into(),
+                CounterPhase => val = "[Counter]".into(),
                 DuringTurn => val = "".into(),
-                Trigger => val = "Trigger".into(),
+                Trigger => val = "[Trigger]".into(),
             }
             write!(f, "{val}")?;
             Ok(())
@@ -1024,15 +1142,25 @@ mod display_implementations {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             use Effect::*;
             match self {
-                Blocker => write!(f, "Blocker")?,
-                TimedEffect(timing, cost, effect) => write!(f, "{} {} {:#?}", timing, cost, effect)?,
+                Blocker => write!(f, "<Blocker>")?,
+                TimedEffect(timing, cost, effect) => {
+                    write!(f, "{} {} ", timing, cost)?;
+                    for effect in effect.iter() {
+                        write!(f, "{} ", effect)?;
+                    }
+                },
                 Draw(i) => write!(f, "Draw {}", i)?,
                 GiveOtherCardPower(i) => write!(f, "Give your Leader or 1 of your Characters other than this card +{i} power during this turn.")?,
                 GiveRestedDon(i) => write!(f, "Give this Leader or 1 of your Characters {i} rested DON!! card(s).")?,
                 KnockOutWithPowerLessThan(i) => write!(f, "K.O. 1 of your opponent's Characters with a power of {i} or less.")?,
                 OncePerTurn => write!(f, "Once Per Turn")?,
-                OpponentNoBlocker(condition) => write!(f, "Your opponent cannot activate Blocker of {:?} during this battle.", condition)?,
-                Rush => write!(f, "Rush")?,
+                OpponentNoBlocker(condition) => {
+                    match condition {
+                        Condition::None => write!(f, "Your opponent cannot activate <Blocker> during this battle.")?,
+                        Condition::PowerAndAbove(i) => write!(f, "Your opponent cannot activate <Blocker> of {i} or higher Power Characters during this battle.")?,
+                    }
+                },
+                Rush => write!(f, "<Rush>")?,
                 PlayCard => write!(f, "Play this card.")?,
                 PlusPower(i) => write!(f, "+{i}")?,
                 PlusPowerForBattle(i) => write!(f, "Your Leader or 1 of your Characters gains +{i} for this battle.")?,
@@ -1053,10 +1181,7 @@ mod display_implementations {
             for att in self.attribute.iter() {
                 write!(f, "{}", att)?;
             }
-            write!(f, "  |\n")?;
-            write!(f, "|                                    \n")?;
-            write!(f, "|                                    \n")?;
-            write!(f, "|                                    \n")?;
+            write!(f, " \n")?;
             write!(f, "|                                    \n")?;
             write!(
                 f,
@@ -1067,7 +1192,7 @@ mod display_implementations {
             for effect in self.effects.iter() {
                 write!(f, "|  {}  \n", effect)?;
             }
-            for i in 0..(5 - self.effects.len()) {
+            for _ in 0..(5 - self.effects.len()) {
                 write!(f, "|                                    \n")?;
             }
             write!(f, "|               {}               \n", self.category)?;
