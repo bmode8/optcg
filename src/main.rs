@@ -5,11 +5,15 @@ use std::fs::File;
 use std::io::{stdin, Read, Write};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
+use log::*;
 use rand::prelude::*;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
+use simplelog::*;
 
 fn main() {
+    TermLogger::init(LevelFilter::Debug, Config::default(), TerminalMode::Mixed, ColorChoice::Auto).unwrap();
+
     install_card_data();
 
     let mut deck_list_file = File::open("sample_deck.txt").unwrap();
@@ -46,6 +50,11 @@ fn main() {
         }
 
         play_field.step();
+        debug!("TURN {:?}", play_field.turn);
+        match play_field.turn {
+            Turn::P1 => { p1_client.handle_message(); },
+            Turn::P2 => { p2_client.handle_message(); },
+        }
     }
 }
 
@@ -678,15 +687,20 @@ pub struct Player {
 
 impl Player {
     pub fn draw(&mut self, n: i32) -> Result<(), ()>{
+        debug!("PLAYER INFO AVAILABLE: {:?}", self.hand);
         for _ in 0..n {
             let drawn_card = self.main_deck.pop();
 
             if drawn_card.is_none() {
+                error!("COULD NOT DRAW CARD");
                 return Err(());
             }
-
-            self.hand.push(drawn_card.unwrap());
+            let drawn_card = drawn_card.unwrap();
+            debug!("DRAWN CARD: {}", drawn_card);
+            self.hand.push(drawn_card);
         }
+        
+        debug!("HAND AFTER DRAWING: LEN ({})\n{:?}", self.hand.len(), self.hand);
 
         Ok(())
     }
@@ -745,6 +759,7 @@ pub enum PlayerAction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
     QueryMulligan,
+    TakeMainAction,
 }
 
 pub struct MockPlayerClient {
@@ -755,18 +770,22 @@ pub struct MockPlayerClient {
 
 impl MockPlayerClient {
     pub fn handle_message(&self) {
-        let message = self.rx.recv().unwrap();
-        match message {
-            ServerMessage::QueryMulligan => {
-                self.respond_to_query_mulligan();
+        if let Ok(message) = self.rx.try_recv() {
+            match message {
+                ServerMessage::QueryMulligan => {
+                    self.respond_to_query_mulligan();
+                }
+                ServerMessage::TakeMainAction => {
+                    self.respond_to_take_main_action();
+                }
             }
-        }
+        }; 
     }
 
     pub fn respond_to_query_mulligan(&self) {
         println!("Hand: ");
         for card in self.player.hand.iter() {
-            println!("{}", card);
+            println!("{:?}", card);
         }
         println!("Mulligan? [y/N]  ");
         let mut input = String::new();
@@ -776,6 +795,25 @@ impl MockPlayerClient {
             "y" => self.tx.send(PlayerAction::TakeMulligan).unwrap(),
             "n" | "" => self.tx.send(PlayerAction::NoAction).unwrap(),
             _ => self.respond_to_query_mulligan(),
+        }
+    }
+
+    pub fn respond_to_take_main_action(&self) {
+        println!("Hand: ");
+        for (i, card) in self.player.hand.iter().enumerate() {
+            println!("{i}\n{:?}", card);
+        }
+
+
+        println!("Action: ");
+        let mut input = String::new();
+        stdin().read_line(&mut input).unwrap();
+        let cleaned_input = input.trim().to_lowercase();
+        let cleaned_input = cleaned_input.as_str();
+
+        match cleaned_input {
+            "end" => { self.tx.send(PlayerAction::NoAction).unwrap(); }
+            _ => self.respond_to_take_main_action(),
         }
     }
 }
@@ -832,6 +870,11 @@ impl PlayField {
         player_1.draw(5).unwrap();
         player_2.draw(5).unwrap();
         
+
+        // FIXME: Ok, making the clone for the player client means that the data is no longer shared,
+        // so that's what has to actually be fixed. Need to actually figure out how to keep the 
+        // player client up-to-date with the server data.
+        // it might be time to break out tokiors.
         let mut player_1 = Box::new(player_1);
         let mut player_2 = Box::new(player_2);
 
@@ -854,7 +897,7 @@ impl PlayField {
         if let PlayerAction::TakeMulligan = p1_mulligan {
             player_1.topdeck_hand();
             player_1.shuffle(&mut rng);
-            player_1.draw(5).unwrap();
+            player_1.draw(2).unwrap();  // FIXME: This should be 5 but debugging.
         }
 
         p2_sender.send(ServerMessage::QueryMulligan).unwrap();
@@ -864,7 +907,7 @@ impl PlayField {
         if let PlayerAction::TakeMulligan = p2_mulligan {
             player_2.topdeck_hand();
             player_2.shuffle(&mut rng);
-            player_2.draw(5).unwrap();
+            player_2.draw(2).unwrap();
         }
 
         let p1_life = player_1.draw_out(player_1.leader.life()).unwrap();
@@ -876,7 +919,7 @@ impl PlayField {
         (
             PlayField {
                 turn: Turn::P1,
-                turn_phase: TurnPhase::Refresh,
+                turn_phase: TurnPhase::Main,
                 turn_n: 1,
                 player_1,
                 player_2,
@@ -928,28 +971,63 @@ impl PlayField {
 
     pub fn step(&mut self) {
         use TurnPhase::*;
+        
+        let mut current_player = match self.turn {
+            Turn::P1 => &mut self.player_1,
+            Turn::P2 => &mut self.player_2,
+        };
+
+        let (comms_tx, comms_rx) = match self.turn {
+            Turn::P1 => (&mut self.p1_sender, &mut self.p1_receiver),
+            Turn::P2 => (&mut self.p2_sender, &mut self.p2_receiver),
+        };
 
         // Behold! A state machine!
         match self.turn_phase {
             Refresh => {
+                debug!("(TURN) [REFRESH]");
+                self.p1_active_don_area.append(&mut self.p1_rested_don_area);
+                self.p1_character_area.append(&mut self.p1_rested_character_area);
+                for card in self.p1_character_area.iter_mut() {
+                    self.p1_active_don_area.append(&mut card.attached_don);
+                }
+
+                self.p2_active_don_area.append(&mut self.p2_rested_don_area);
+                self.p2_character_area.append(&mut self.p2_rested_character_area);
+                for card in self.p2_character_area.iter_mut() {
+                    self.p2_active_don_area.append(&mut card.attached_don);
+                }
+
                 self.turn_phase = Draw;
             },
             Draw => {
-                match self.turn {
-                    Turn::P1 => {
-                        self.player_1.draw(1);
-                    }
-                    Turn::P2 => {
-                        self.player_2.draw(1);
-                    }
+                debug!("(TURN) [DRAW]");
+                let res = current_player.draw(1).unwrap();
+                /*
+                match res {
+                    Ok(()) => { },
+                    Err(()) => { return; },
                 }
+                */
                 self.turn_phase = Don;
             },
             Don => {
+                debug!("(TURN) [DON]");
+                current_player.draw_don(2);
                 self.turn_phase = Main;
             },
             Main => {
-                self.turn_phase = End;
+                debug!("(TURN) [MAIN]");
+                let player_action = comms_rx.try_recv();
+                match player_action {
+                    Ok(PlayerAction::NoAction) => { 
+                        self.turn_phase = End; 
+                        return;
+                    }
+                    Ok(_) => { },
+                    Err(e) => { },
+                }
+                comms_tx.send(ServerMessage::TakeMainAction).unwrap();
             },
             BattleAttackStep => {},
             BattleBlockStep => {},
