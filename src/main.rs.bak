@@ -1002,13 +1002,11 @@ impl PlayField {
             },
             Draw => {
                 debug!("(TURN) [DRAW]");
-                let res = current_player.draw(1).unwrap();
-                /*
+                let res = current_player.draw(1);
                 match res {
                     Ok(()) => { },
                     Err(()) => { return; },
                 }
-                */
                 self.turn_phase = Don;
             },
             Don => {
