@@ -18,9 +18,14 @@ use optcg::mockclient::*;
 use optcg::player::*;
 use optcg::*;
 
-#[tokio::main]
-async fn main() {
-    TermLogger::init(LevelFilter::Debug, Config::default(), TerminalMode::Mixed, ColorChoice::Auto).unwrap();
+fn main() {
+    TermLogger::init(
+        LevelFilter::Debug,
+        Config::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
+    )
+    .unwrap();
     install_card_data();
 
     let mut deck_list_file = File::open("sample_deck.txt").unwrap();
@@ -37,7 +42,7 @@ async fn main() {
         hand: vec![],
         trash: vec![],
     };
-    
+
     let player_2 = Player {
         name: "Player 2".into(),
         leader: leader.clone(),
@@ -59,8 +64,12 @@ async fn main() {
         play_field.step();
         debug!("{:?}'s TURN (TURN {})", play_field.turn, play_field.turn_n);
         match play_field.turn {
-            Turn::P1 => { p1_client.handle_message(); },
-            Turn::P2 => { p2_client.handle_message(); },
+            Turn::P1 => {
+                p1_client.handle_message();
+            }
+            Turn::P2 => {
+                p2_client.handle_message();
+            }
         }
     }
 }

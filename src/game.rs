@@ -51,7 +51,7 @@ impl PlayField {
         let (p2_client_sender, p2_receiver) = channel();
 
         let mut rng = thread_rng();
-        
+
         player_1.shuffle(&mut rng);
         player_2.shuffle(&mut rng);
 
@@ -60,7 +60,6 @@ impl PlayField {
 
         let mut player_1 = Box::new(player_1);
         let mut player_2 = Box::new(player_2);
-        
 
         let mut player_1_client = MockPlayerClient {
             player: player_1.clone(),
@@ -81,8 +80,10 @@ impl PlayField {
         if let PlayerAction::TakeMulligan = p1_mulligan {
             player_1.topdeck_hand();
             player_1.shuffle(&mut rng);
-            player_1.draw(5).unwrap();  
-            p1_sender.send(ServerMessage::PlayerDataPayload(player_1.clone())).unwrap();
+            player_1.draw(5).unwrap();
+            p1_sender
+                .send(ServerMessage::PlayerDataPayload(player_1.clone()))
+                .unwrap();
             player_1_client.handle_message();
         }
 
@@ -94,13 +95,15 @@ impl PlayField {
             player_2.topdeck_hand();
             player_2.shuffle(&mut rng);
             player_2.draw(5).unwrap();
-            p2_sender.send(ServerMessage::PlayerDataPayload(player_2.clone())).unwrap();
+            p2_sender
+                .send(ServerMessage::PlayerDataPayload(player_2.clone()))
+                .unwrap();
             player_2_client.handle_message();
         }
 
         let p1_life = player_1.draw_out(player_1.leader.life()).unwrap();
         let p2_life = player_2.draw_out(player_2.leader.life()).unwrap();
-        
+
         // Begin turn 1.
         let p1_don = player_1.draw_don(1);
 
@@ -145,9 +148,9 @@ impl PlayField {
         }
 
         if p1_deck_len == 0 {
-            return Some(PlayerId::P1)
+            return Some(PlayerId::P1);
         } else if p2_deck_len == 0 {
-            return Some(PlayerId::P2)
+            return Some(PlayerId::P2);
         }
 
         None
@@ -159,7 +162,7 @@ impl PlayField {
 
     pub fn step(&mut self) {
         use TurnPhase::*;
-        
+
         let current_player = match self.turn {
             Turn::P1 => &mut self.player_1,
             Turn::P2 => &mut self.player_2,
@@ -175,55 +178,65 @@ impl PlayField {
             Refresh => {
                 debug!("(TURN) [REFRESH]");
                 self.p1_active_don_area.append(&mut self.p1_rested_don_area);
-                self.p1_character_area.append(&mut self.p1_rested_character_area);
+                self.p1_character_area
+                    .append(&mut self.p1_rested_character_area);
                 for card in self.p1_character_area.iter_mut() {
                     self.p1_active_don_area.append(&mut card.attached_don);
                 }
 
                 self.p2_active_don_area.append(&mut self.p2_rested_don_area);
-                self.p2_character_area.append(&mut self.p2_rested_character_area);
+                self.p2_character_area
+                    .append(&mut self.p2_rested_character_area);
                 for card in self.p2_character_area.iter_mut() {
                     self.p2_active_don_area.append(&mut card.attached_don);
                 }
 
                 self.turn_phase = Draw;
-            },
+            }
             Draw => {
                 debug!("(TURN) [DRAW]");
                 let res = current_player.draw(1);
                 match res {
-                    Ok(()) => { },
-                    Err(()) => { return; },
+                    Ok(()) => {}
+                    Err(()) => {
+                        return;
+                    }
                 }
-                comms_tx.send(ServerMessage::PlayerDataPayload(current_player.clone())).unwrap();
-                
+                comms_tx
+                    .send(ServerMessage::PlayerDataPayload(current_player.clone()))
+                    .unwrap();
+
                 self.turn_phase = Don;
-            },
+            }
             Don => {
                 debug!("(TURN) [DON]");
                 current_player.draw_don(2);
-                comms_tx.send(ServerMessage::PlayerDataPayload(current_player.clone())).unwrap();
+                comms_tx
+                    .send(ServerMessage::PlayerDataPayload(current_player.clone()))
+                    .unwrap();
                 self.turn_phase = Main;
-            },
+            }
             Main => {
                 debug!("(TURN) [MAIN]");
                 let player_action = comms_rx.try_recv();
                 match player_action {
-                    Ok(PlayerAction::NoAction) => { 
-                        self.turn_phase = End; 
+                    Ok(PlayerAction::NoAction) => {
+                        self.turn_phase = End;
                         return;
                     }
-                    Ok(_) => { },
-                    Err(_e) => { },
+                    Ok(_) => {}
+                    Err(_e) => {}
                 }
-                comms_tx.send(ServerMessage::PlayerDataPayload(current_player.clone())).unwrap();
+                comms_tx
+                    .send(ServerMessage::PlayerDataPayload(current_player.clone()))
+                    .unwrap();
                 comms_tx.send(ServerMessage::TakeMainAction).unwrap();
-            },
-            BattleAttackStep => {},
-            BattleBlockStep => {},
-            BattleCounterStep => {},
-            BattleDamageStep => {},
-            BattleEnd => {},
+            }
+            BattleAttackStep => {}
+            BattleBlockStep => {}
+            BattleCounterStep => {}
+            BattleDamageStep => {}
+            BattleEnd => {}
             End => {
                 self.turn_n += 1;
                 self.turn = match self.turn {
@@ -231,7 +244,7 @@ impl PlayField {
                     Turn::P2 => Turn::P1,
                 };
                 self.turn_phase = Refresh;
-            },
+            }
         }
     }
 }

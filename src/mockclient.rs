@@ -15,7 +15,7 @@ pub enum PlayerAction {
 pub enum ServerMessage {
     QueryMulligan,
     TakeMainAction,
-    PlayerDataPayload(Box<Player>)
+    PlayerDataPayload(Box<Player>),
 }
 
 pub struct MockPlayerClient {
@@ -38,7 +38,7 @@ impl MockPlayerClient {
                     self.player = player;
                 }
             }
-        }; 
+        }
     }
 
     pub fn respond_to_query_mulligan(&self) {
@@ -63,8 +63,8 @@ impl MockPlayerClient {
             println!("{i}\n{:?}", card);
         }
 
-        // FIXME: No don??? Actually though the client is going to need to know a version of the board state, so 
-        // maybe the best way to handle that is adding some of the `PlayField` data to the `MockPlayerClient` struct? 
+        // FIXME: No don??? Actually though the client is going to need to know a version of the board state, so
+        // maybe the best way to handle that is adding some of the `PlayField` data to the `MockPlayerClient` struct?
         // Now is also about the time to integrate the FaceDown/FaceUp status throughout the turn.
 
         println!("Action: ");
@@ -74,7 +74,9 @@ impl MockPlayerClient {
         let cleaned_input = cleaned_input.as_str();
 
         match cleaned_input {
-            "end" => { self.tx.send(PlayerAction::NoAction).unwrap(); }
+            "end" => {
+                self.tx.send(PlayerAction::NoAction).unwrap();
+            }
             _ => self.respond_to_take_main_action(),
         }
     }

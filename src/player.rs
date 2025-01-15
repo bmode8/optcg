@@ -15,7 +15,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn draw(&mut self, n: i32) -> Result<(), ()>{
+    pub fn draw(&mut self, n: i32) -> Result<(), ()> {
         for _ in 0..n {
             let drawn_card = self.main_deck.pop();
 

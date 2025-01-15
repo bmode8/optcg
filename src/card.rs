@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use super::game::*;
 
@@ -97,7 +97,7 @@ pub fn install_card_data() {
         vec![Red],
         vec!["Straw Hat Crew".to_string()],
         vec![TimedEffect(DuringTurn, DonAttached(2), vec![Rush])],
-        FaceDown
+        FaceDown,
     );
 
     let ST01_005 = Card::new(
@@ -116,7 +116,7 @@ pub fn install_card_data() {
             DonAttached(1),
             vec![GiveOtherCardPower(1000)],
         )],
-        FaceDown
+        FaceDown,
     );
 
     let ST01_006 = Card::new(
@@ -129,7 +129,7 @@ pub fn install_card_data() {
         None,
         vec![Strike],
         vec![Red],
-        vec!["Animal".into(), "Straw Hat Crew".into()], 
+        vec!["Animal".into(), "Straw Hat Crew".into()],
         vec![Blocker],
         FaceDown,
     );
@@ -145,7 +145,11 @@ pub fn install_card_data() {
         vec![Special],
         vec![Red],
         vec!["Straw Hat Crew".into()],
-        vec![TimedEffect(ActivateMain, Zero, vec![OncePerTurn, GiveRestedDon(1)])],
+        vec![TimedEffect(
+            ActivateMain,
+            Zero,
+            vec![OncePerTurn, GiveRestedDon(1)],
+        )],
         FaceDown,
     );
 
@@ -228,7 +232,7 @@ pub fn install_card_data() {
                 vec![OpponentNoBlocker(Condition::None)],
             ),
         ],
-        FaceDown
+        FaceDown,
     );
 
     let ST01_013 = Card::new(
@@ -247,7 +251,7 @@ pub fn install_card_data() {
             DonAttached(1),
             vec![PlusPower(1000)],
         )],
-        FaceDown
+        FaceDown,
     );
 
     let ST01_014 = Card::new(
@@ -265,7 +269,7 @@ pub fn install_card_data() {
             TimedEffect(CounterPhase, Zero, vec![PlusPowerForBattle(3000)]),
             TimedEffect(Trigger, Zero, vec![PlusPower(1000)]),
         ],
-        FaceDown
+        FaceDown,
     );
 
     let ST01_015 = Card::new(
@@ -283,7 +287,7 @@ pub fn install_card_data() {
             TimedEffect(Main, Zero, vec![KnockOutWithPowerLessThan(6000)]),
             TimedEffect(Trigger, Zero, vec![KnockOutWithPowerLessThan(6000)]),
         ],
-        FaceDown
+        FaceDown,
     );
 
     let OP09_072 = Card {
@@ -310,8 +314,8 @@ pub fn install_card_data() {
     };
 
     let current_cards = vec![
-        DON_don, ST01_001, ST01_002, ST01_003, ST01_004, ST01_005, ST01_006, ST01_007, ST01_008, ST01_009, ST01_010,
-        ST01_011, ST01_012, ST01_013, ST01_014, ST01_015, OP09_072,
+        DON_don, ST01_001, ST01_002, ST01_003, ST01_004, ST01_005, ST01_006, ST01_007, ST01_008,
+        ST01_009, ST01_010, ST01_011, ST01_012, ST01_013, ST01_014, ST01_015, OP09_072,
     ];
 
     for card in current_cards {
@@ -364,11 +368,7 @@ pub fn parse_deck_list(deck_list: &str) -> Result<(Card, Deck, Deck), DeckError>
         let quantity = line_contents[0].parse::<i32>().unwrap();
         let id = line_contents[1].to_string();
 
-        let entry = DeckListEntry {
-            quantity,
-            id,
-            art,
-        };
+        let entry = DeckListEntry { quantity, id, art };
 
         deck_list_entries.push(entry);
     }
@@ -378,10 +378,10 @@ pub fn parse_deck_list(deck_list: &str) -> Result<(Card, Deck, Deck), DeckError>
     for entry in deck_list_entries.iter() {
         let filename: String;
 
-        if entry.art == "" { 
-            filename = format!("{}.json", entry.id); 
-        } else { 
-            filename = format!("{}-{}.json", entry.id, entry.art); 
+        if entry.art == "" {
+            filename = format!("{}.json", entry.id);
+        } else {
+            filename = format!("{}-{}.json", entry.id, entry.art);
         }
 
         let Ok(card_data) = std::fs::read_to_string(format!("assets/card_data/{}", filename))
@@ -399,9 +399,21 @@ pub fn parse_deck_list(deck_list: &str) -> Result<(Card, Deck, Deck), DeckError>
     validate_deck(&cards_used_in_deck)?;
 
     Ok((
-        cards_used_in_deck.iter().find(|card| card.is_leader()).unwrap().clone(),
-        cards_used_in_deck.iter().filter(|card| !card.is_don() && !card.is_leader()).map(|card| card.clone()).collect::<Vec<Card>>(),
-        cards_used_in_deck.iter().filter(|card| card.is_don()).map(|card| card.clone()).collect::<Vec<Card>>(),
+        cards_used_in_deck
+            .iter()
+            .find(|card| card.is_leader())
+            .unwrap()
+            .clone(),
+        cards_used_in_deck
+            .iter()
+            .filter(|card| !card.is_don() && !card.is_leader())
+            .map(|card| card.clone())
+            .collect::<Vec<Card>>(),
+        cards_used_in_deck
+            .iter()
+            .filter(|card| card.is_don())
+            .map(|card| card.clone())
+            .collect::<Vec<Card>>(),
     ))
 }
 
@@ -410,24 +422,32 @@ pub fn validate_deck(cards: &Vec<Card>) -> Result<(), DeckError> {
         return Err(DeckError::InvalidDeckLength(cards.len()));
     }
     let mut leader_count = 0;
-    cards.iter().for_each(|card| if card.is_leader() { leader_count += 1; });
+    cards.iter().for_each(|card| {
+        if card.is_leader() {
+            leader_count += 1;
+        }
+    });
     if leader_count > 1 {
         return Err(DeckError::TooManyLeaders);
     }
-    
+
     let mut don_count = 0;
     let mut id_hash: HashMap<String, i32> = HashMap::new();
 
     for card in cards.iter() {
-        if card.is_don() { 
+        if card.is_don() {
             don_count += 1;
-            continue; 
+            continue;
         }
 
         let current = id_hash.insert(card.identifier.clone(), 1);
         match current {
             None => (),
-            Some(i) => { id_hash.entry(card.identifier.clone()).and_modify(|e| *e = i + 1); },
+            Some(i) => {
+                id_hash
+                    .entry(card.identifier.clone())
+                    .and_modify(|e| *e = i + 1);
+            }
         }
     }
 
@@ -440,7 +460,6 @@ pub fn validate_deck(cards: &Vec<Card>) -> Result<(), DeckError> {
             return Err(DeckError::TooManyCopies(entry.0.clone(), *entry.1));
         }
     }
-
 
     Ok(())
 }
@@ -497,7 +516,7 @@ pub enum DeckError {
     InvalidCardName(String),
     InvalidCardArt(String),
     InvalidDeckLength(usize), // Requires exactly 61 cards total (Leader, Main deck, and DON!! deck)
-    NotEnoughDon, // Requires exactly 10 DON!! cards.
+    NotEnoughDon,             // Requires exactly 10 DON!! cards.
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -588,7 +607,7 @@ impl Card {
             types,
             effects,
             attached_don: vec![],
-            facing
+            facing,
         }
     }
 
