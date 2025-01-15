@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{stdin, Read, Write};
@@ -637,7 +638,6 @@ pub struct Player {
 
 impl Player {
     pub fn draw(&mut self, n: i32) -> Result<(), ()>{
-        debug!("PLAYER INFO AVAILABLE: {:?}", self.hand);
         for _ in 0..n {
             let drawn_card = self.main_deck.pop();
 
@@ -649,8 +649,6 @@ impl Player {
             debug!("DRAWN CARD: {}", drawn_card);
             self.hand.push(drawn_card);
         }
-        
-        debug!("HAND AFTER DRAWING: LEN ({})\n{:?}", self.hand.len(), self.hand);
 
         Ok(())
     }
@@ -758,6 +756,9 @@ impl MockPlayerClient {
             println!("{i}\n{:?}", card);
         }
 
+        // FIXME: No don??? Actually though the client is going to need to know a version of the board state, so 
+        // maybe the best way to handle that is adding some of the `PlayField` data to the `MockPlayerClient` struct? 
+        // Now is also about the time to integrate the FaceDown/FaceUp status throughout the turn.
 
         println!("Action: ");
         let mut input = String::new();
@@ -823,13 +824,6 @@ impl PlayField {
 
         player_1.draw(5).unwrap();
         player_2.draw(5).unwrap();
-        
-
-        // FIXME: Ok, making the clone for the player client means that the data is no longer shared,
-        // so that's what has to actually be fixed. Need to actually figure out how to keep the 
-        // player client up-to-date with the server data.
-        // it might be time to break out tokiors.
-
 
         let mut player_1 = Box::new(player_1);
         let mut player_2 = Box::new(player_2);
@@ -854,7 +848,7 @@ impl PlayField {
         if let PlayerAction::TakeMulligan = p1_mulligan {
             player_1.topdeck_hand();
             player_1.shuffle(&mut rng);
-            player_1.draw(2).unwrap();  // FIXME: This should be 5 but debugging.
+            player_1.draw(5).unwrap();  
             p1_sender.send(ServerMessage::PlayerDataPayload(player_1.clone())).unwrap();
             player_1_client.handle_message();
         }
@@ -866,7 +860,7 @@ impl PlayField {
         if let PlayerAction::TakeMulligan = p2_mulligan {
             player_2.topdeck_hand();
             player_2.shuffle(&mut rng);
-            player_2.draw(2).unwrap();
+            player_2.draw(5).unwrap();
             p2_sender.send(ServerMessage::PlayerDataPayload(player_2.clone())).unwrap();
             player_2_client.handle_message();
         }
