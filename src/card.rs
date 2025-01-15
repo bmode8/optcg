@@ -635,6 +635,47 @@ impl Card {
     pub fn set_faceup(&mut self) {
         self.facing = Facing::FaceUp;
     }
+
+    pub fn set_facedown(&mut self) {
+        self.facing = Facing::FaceDown;
+    }
+
+    pub fn with_faceup(&self) -> Card {
+        let mut c = self.clone();
+        c.set_faceup();
+        c
+    }
+
+    pub fn with_facedown(&self) -> Card {
+        let mut c = self.clone();
+        c.set_facedown();
+        c
+    }
 }
 
 pub type Deck = Vec<Card>;
+
+pub trait SetFacing {
+    fn set_faceup(&self) -> Self;
+    fn set_facedown(&self) -> Self;
+}
+
+impl SetFacing for Deck {
+    fn set_faceup(&self) -> Deck {
+        let mut set = Deck::new();
+        for card in self.iter() {
+            set.push(card.with_faceup());
+        }
+
+        set
+    }
+
+    fn set_facedown(&self) -> Deck {
+        let mut set = Deck::new();
+        for card in self.iter() {
+            set.push(card.with_facedown());
+        }
+
+        set
+    }
+}

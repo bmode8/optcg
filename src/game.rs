@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use log::*;
@@ -14,6 +16,7 @@ pub enum Turn {
 
 pub type PlayerId = Turn;
 
+#[derive(Debug)]
 pub struct PlayField {
     pub turn: Turn,
     pub turn_phase: TurnPhase,
@@ -39,6 +42,88 @@ pub struct PlayField {
     pub rng: ThreadRng,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublicPlayfieldState {
+    pub p1_life_area: Deck,
+    pub p2_life_area: Deck,
+    pub p1_stage_area: Deck,
+    pub p2_stage_area: Deck,
+    pub p1_character_area: Deck,
+    pub p2_character_area: Deck,
+    pub p1_rested_character_area: Deck,
+    pub p2_rested_character_area: Deck,
+    pub p1_active_don_area: Deck,
+    pub p2_active_don_area: Deck,
+    pub p1_rested_don_area: Deck,
+    pub p2_rested_don_area: Deck,
+}
+
+impl PublicPlayfieldState {
+    pub fn empty() -> PublicPlayfieldState {
+        PublicPlayfieldState {
+            p1_life_area: Deck::new(),
+            p2_life_area: Deck::new(),
+            p1_stage_area: Deck::new(),
+            p2_stage_area: Deck::new(),
+            p1_character_area: Deck::new(),
+            p2_character_area: Deck::new(),
+            p1_rested_character_area: Deck::new(),
+            p2_rested_character_area: Deck::new(),
+            p1_active_don_area: Deck::new(),
+            p2_active_don_area: Deck::new(),
+            p1_rested_don_area: Deck::new(),
+            p2_rested_don_area: Deck::new(),
+        }
+    }
+
+    pub fn new(
+        p1_life_area: Deck,
+        p2_life_area: Deck,
+        p1_stage_area: Deck,
+        p2_stage_area: Deck,
+        p1_character_area: Deck,
+        p2_character_area: Deck,
+        p1_rested_character_area: Deck,
+        p2_rested_character_area: Deck,
+        p1_active_don_area: Deck,
+        p2_active_don_area: Deck,
+        p1_rested_don_area: Deck,
+        p2_rested_don_area: Deck,
+    ) -> PublicPlayfieldState {
+        PublicPlayfieldState {
+            p1_life_area,
+            p2_life_area,
+            p1_stage_area,
+            p2_stage_area,
+            p1_character_area,
+            p2_character_area,
+            p1_rested_character_area,
+            p2_rested_character_area,
+            p1_active_don_area,
+            p2_active_don_area,
+            p1_rested_don_area,
+            p2_rested_don_area,
+        }
+    }
+
+    pub fn from_playfield(playfield: &PlayField) -> PublicPlayfieldState {
+        PublicPlayfieldState {
+            p1_life_area: playfield.p1_life_area.clone(),
+            p2_life_area: playfield.p2_life_area.clone(),
+            p1_stage_area: playfield.p1_stage_area.clone(),
+            p2_stage_area: playfield.p2_stage_area.clone(),
+            p1_character_area: playfield.p1_character_area.clone(),
+            p2_character_area: playfield.p2_character_area.clone(),
+            p1_rested_character_area: playfield.p1_rested_character_area.clone(),
+            p2_rested_character_area: playfield.p2_rested_character_area.clone(),
+            p1_active_don_area: playfield.p1_active_don_area.clone(),
+            p2_active_don_area: playfield.p2_active_don_area.clone(),
+            p1_rested_don_area: playfield.p1_rested_don_area.clone(),
+            p2_rested_don_area: playfield.p2_rested_don_area.clone(),
+        }
+    }
+}
+
 impl PlayField {
     pub fn setup(
         mut player_1: Player,
@@ -60,21 +145,26 @@ impl PlayField {
 
         let mut player_1 = Box::new(player_1);
         let mut player_2 = Box::new(player_2);
+        let public_playfield_state = Box::new(PublicPlayfieldState::empty());
 
         let mut player_1_client = MockPlayerClient {
-            player: player_1.clone(),
+            this_player: player_1.clone(),
+            other_player: player_2.public_clone(),
+            public_playfield_state: public_playfield_state.clone(),
             tx: p1_client_sender,
             rx: p1_server_receiver,
         };
 
         let mut player_2_client = MockPlayerClient {
-            player: player_2.clone(),
+            this_player: player_2.clone(),
+            other_player: player_1.public_clone(),
+            public_playfield_state: public_playfield_state.clone(),
             tx: p2_client_sender,
             rx: p2_server_receiver,
         };
 
         p1_sender.send(ServerMessage::QueryMulligan).unwrap();
-        player_1_client.handle_message();
+        player_1_client.handle_messages();
         let p1_mulligan = p1_receiver.recv().unwrap();
 
         if let PlayerAction::TakeMulligan = p1_mulligan {
@@ -84,11 +174,11 @@ impl PlayField {
             p1_sender
                 .send(ServerMessage::PlayerDataPayload(player_1.clone()))
                 .unwrap();
-            player_1_client.handle_message();
+            player_1_client.handle_messages();
         }
 
         p2_sender.send(ServerMessage::QueryMulligan).unwrap();
-        player_2_client.handle_message();
+        player_2_client.handle_messages();
         let p2_mulligan = p2_receiver.recv().unwrap();
 
         if let PlayerAction::TakeMulligan = p2_mulligan {
@@ -98,7 +188,7 @@ impl PlayField {
             p2_sender
                 .send(ServerMessage::PlayerDataPayload(player_2.clone()))
                 .unwrap();
-            player_2_client.handle_message();
+            player_2_client.handle_messages();
         }
 
         let p1_life = player_1.draw_out(player_1.leader.life()).unwrap();
@@ -163,15 +253,60 @@ impl PlayField {
     pub fn step(&mut self) {
         use TurnPhase::*;
 
-        let current_player = match self.turn {
-            Turn::P1 => &mut self.player_1,
-            Turn::P2 => &mut self.player_2,
+        let (current_player, other_player) = match self.turn {
+            Turn::P1 => (&mut self.player_1, &mut self.player_2),
+            Turn::P2 => (&mut self.player_2, &mut self.player_1),
         };
 
-        let (comms_tx, comms_rx) = match self.turn {
-            Turn::P1 => (&mut self.p1_sender, &mut self.p1_receiver),
-            Turn::P2 => (&mut self.p2_sender, &mut self.p2_receiver),
+        let (current_tx, current_rx, other_tx, other_rx) = match self.turn {
+            Turn::P1 => (
+                &mut self.p1_sender,
+                &mut self.p1_receiver,
+                &mut self.p2_sender,
+                &mut self.p2_receiver,
+            ),
+            Turn::P2 => (
+                &mut self.p2_sender,
+                &mut self.p2_receiver,
+                &mut self.p1_sender,
+                &mut self.p1_receiver,
+            ),
         };
+
+        fn send_updates(
+            current_tx: &mut Sender<ServerMessage>,
+            other_tx: &mut Sender<ServerMessage>,
+            current_player: &Box<Player>,
+            other_player: &Box<Player>,
+            public_field_state: PublicPlayfieldState,
+        ) {
+            current_tx
+                .send(ServerMessage::PlayerDataPayload(current_player.clone()))
+                .unwrap();
+            current_tx
+                .send(ServerMessage::OtherPlayerDataPayload(
+                    other_player.public_clone(),
+                ))
+                .unwrap();
+            current_tx
+                .send(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(
+                    public_field_state.clone(),
+                )))
+                .unwrap();
+            other_tx
+                .send(ServerMessage::PlayerDataPayload(other_player.clone()))
+                .unwrap();
+            other_tx
+                .send(ServerMessage::OtherPlayerDataPayload(
+                    current_player.public_clone(),
+                ))
+                .unwrap();
+            other_tx
+                .send(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(
+                    public_field_state,
+                )))
+                .unwrap();
+        }
 
         // Behold! A state machine!
         match self.turn_phase {
@@ -191,6 +326,28 @@ impl PlayField {
                     self.p2_active_don_area.append(&mut card.attached_don);
                 }
 
+                let public_state = PublicPlayfieldState::new(
+                    self.p1_life_area.clone(),
+                    self.p2_life_area.clone(),
+                    self.p1_stage_area.clone(),
+                    self.p2_stage_area.clone(),
+                    self.p1_character_area.clone(),
+                    self.p2_character_area.clone(),
+                    self.p1_rested_character_area.clone(),
+                    self.p2_rested_character_area.clone(),
+                    self.p1_active_don_area.clone(),
+                    self.p2_active_don_area.clone(),
+                    self.p1_rested_don_area.clone(),
+                    self.p2_rested_don_area.clone(),
+                );
+                send_updates(
+                    current_tx,
+                    other_tx,
+                    current_player,
+                    other_player,
+                    public_state,
+                );
+
                 self.turn_phase = Draw;
             }
             Draw => {
@@ -202,23 +359,60 @@ impl PlayField {
                         return;
                     }
                 }
-                comms_tx
-                    .send(ServerMessage::PlayerDataPayload(current_player.clone()))
-                    .unwrap();
-
+                let public_state = PublicPlayfieldState::new(
+                    self.p1_life_area.clone(),
+                    self.p2_life_area.clone(),
+                    self.p1_stage_area.clone(),
+                    self.p2_stage_area.clone(),
+                    self.p1_character_area.clone(),
+                    self.p2_character_area.clone(),
+                    self.p1_rested_character_area.clone(),
+                    self.p2_rested_character_area.clone(),
+                    self.p1_active_don_area.clone(),
+                    self.p2_active_don_area.clone(),
+                    self.p1_rested_don_area.clone(),
+                    self.p2_rested_don_area.clone(),
+                );
+                send_updates(
+                    current_tx,
+                    other_tx,
+                    current_player,
+                    other_player,
+                    public_state,
+                );
                 self.turn_phase = Don;
             }
             Don => {
                 debug!("(TURN) [DON]");
                 current_player.draw_don(2);
-                comms_tx
-                    .send(ServerMessage::PlayerDataPayload(current_player.clone()))
-                    .unwrap();
+
+                let public_state = PublicPlayfieldState::new(
+                    self.p1_life_area.clone(),
+                    self.p2_life_area.clone(),
+                    self.p1_stage_area.clone(),
+                    self.p2_stage_area.clone(),
+                    self.p1_character_area.clone(),
+                    self.p2_character_area.clone(),
+                    self.p1_rested_character_area.clone(),
+                    self.p2_rested_character_area.clone(),
+                    self.p1_active_don_area.clone(),
+                    self.p2_active_don_area.clone(),
+                    self.p1_rested_don_area.clone(),
+                    self.p2_rested_don_area.clone(),
+                );
+                send_updates(
+                    current_tx,
+                    other_tx,
+                    current_player,
+                    other_player,
+                    public_state,
+                );
+
                 self.turn_phase = Main;
             }
             Main => {
                 debug!("(TURN) [MAIN]");
-                let player_action = comms_rx.try_recv();
+                let player_action = current_rx.try_recv();
                 match player_action {
                     Ok(PlayerAction::NoAction) => {
                         self.turn_phase = End;
@@ -227,10 +421,10 @@ impl PlayField {
                     Ok(_) => {}
                     Err(_e) => {}
                 }
-                comms_tx
+                current_tx
                     .send(ServerMessage::PlayerDataPayload(current_player.clone()))
                     .unwrap();
-                comms_tx.send(ServerMessage::TakeMainAction).unwrap();
+                current_tx.send(ServerMessage::TakeMainAction).unwrap();
             }
             BattleAttackStep => {}
             BattleBlockStep => {}

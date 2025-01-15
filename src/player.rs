@@ -14,6 +14,7 @@ pub struct Player {
     pub trash: Deck,
 }
 
+/// Game related implementations.
 impl Player {
     pub fn draw(&mut self, n: i32) -> Result<(), ()> {
         for _ in 0..n {
@@ -73,5 +74,19 @@ impl Player {
         for card in self.hand.iter_mut() {
             card.set_faceup();
         }
+    }
+}
+
+/// Non-game related implementations.
+impl Player {
+    pub fn public_clone(&self) -> Box<Player> {
+        Box::new(Player {
+            name: self.name.clone(),
+            leader: self.leader.clone(),
+            main_deck: self.main_deck.clone(),
+            don_deck: self.don_deck.clone(),
+            hand: self.hand.clone().set_facedown(),
+            trash: self.trash.clone(),
+        })
     }
 }

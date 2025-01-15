@@ -65,11 +65,13 @@ fn main() {
         debug!("{:?}'s TURN (TURN {})", play_field.turn, play_field.turn_n);
         match play_field.turn {
             Turn::P1 => {
-                p1_client.handle_message();
+                p1_client.handle_messages();
             }
             Turn::P2 => {
-                p2_client.handle_message();
+                p2_client.handle_messages();
             }
         }
+
+        println!("{:?}", play_field);
     }
 }

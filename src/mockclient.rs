@@ -3,6 +3,7 @@ use std::sync::mpsc::{Receiver, Sender};
 
 use serde::{Deserialize, Serialize};
 
+use super::game::*;
 use super::player::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,16 +17,20 @@ pub enum ServerMessage {
     QueryMulligan,
     TakeMainAction,
     PlayerDataPayload(Box<Player>),
+    OtherPlayerDataPayload(Box<Player>),
+    PublicPlayfieldStateDataPayload(Box<PublicPlayfieldState>),
 }
 
 pub struct MockPlayerClient {
-    pub player: Box<Player>,
+    pub this_player: Box<Player>,
+    pub other_player: Box<Player>,
+    pub public_playfield_state: Box<PublicPlayfieldState>,
     pub tx: Sender<PlayerAction>,
     pub rx: Receiver<ServerMessage>,
 }
 
 impl MockPlayerClient {
-    pub fn handle_message(&mut self) {
+    pub fn handle_messages(&mut self) {
         while let Ok(message) = self.rx.try_recv() {
             match message {
                 ServerMessage::QueryMulligan => {
@@ -35,7 +40,13 @@ impl MockPlayerClient {
                     self.respond_to_take_main_action();
                 }
                 ServerMessage::PlayerDataPayload(player) => {
-                    self.player = player;
+                    self.this_player = player;
+                }
+                ServerMessage::OtherPlayerDataPayload(player) => {
+                    self.other_player = player;
+                }
+                ServerMessage::PublicPlayfieldStateDataPayload(state) => {
+                    self.public_playfield_state = state;
                 }
             }
         }
@@ -43,7 +54,7 @@ impl MockPlayerClient {
 
     pub fn respond_to_query_mulligan(&self) {
         println!("Hand: ");
-        for card in self.player.hand.iter() {
+        for card in self.this_player.hand.iter() {
             println!("{:?}", card);
         }
         println!("Mulligan? [y/N]  ");
@@ -59,7 +70,7 @@ impl MockPlayerClient {
 
     pub fn respond_to_take_main_action(&self) {
         println!("Hand: ");
-        for (i, card) in self.player.hand.iter().enumerate() {
+        for (i, card) in self.this_player.hand.iter().enumerate() {
             println!("{i}\n{:?}", card);
         }
 
