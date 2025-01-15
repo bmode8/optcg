@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 use simplelog::*;
 use tokio::*;
 
+use optcg::card::*;
+use optcg::game::*;
+use optcg::mockclient::*;
+use optcg::player::*;
 use optcg::*;
 
 #[tokio::main]
@@ -53,7 +57,7 @@ async fn main() {
         }
 
         play_field.step();
-        debug!("{:?}'2 TURN (TURN {})", play_field.turn, play_field.turn_n);
+        debug!("{:?}'s TURN (TURN {})", play_field.turn, play_field.turn_n);
         match play_field.turn {
             Turn::P1 => { p1_client.handle_message(); },
             Turn::P2 => { p2_client.handle_message(); },

@@ -1,0 +1,77 @@
+use log::*;
+use rand::prelude::*;
+use serde::{Deserialize, Serialize};
+
+use super::card::*;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Player {
+    pub name: String,
+    pub leader: Card,
+    pub main_deck: Deck,
+    pub don_deck: Deck,
+    pub hand: Deck,
+    pub trash: Deck,
+}
+
+impl Player {
+    pub fn draw(&mut self, n: i32) -> Result<(), ()>{
+        for _ in 0..n {
+            let drawn_card = self.main_deck.pop();
+
+            if drawn_card.is_none() {
+                error!("COULD NOT DRAW CARD");
+                return Err(());
+            }
+            let drawn_card = drawn_card.unwrap();
+            debug!("DRAWN CARD: {}", drawn_card);
+            self.hand.push(drawn_card);
+        }
+
+        Ok(())
+    }
+
+    pub fn draw_don(&mut self, n: i32) -> Deck {
+        let mut drawn_don = Deck::new();
+        for _ in 0..n {
+            let drawn_card = self.don_deck.pop();
+
+            if drawn_card.is_none() {
+                return drawn_don;
+            }
+
+            drawn_don.push(drawn_card.unwrap());
+        }
+
+        drawn_don
+    }
+
+    pub fn draw_out(&mut self, n: i32) -> Result<Deck, ()> {
+        let mut drawn_out = Deck::new();
+        for _ in 0..n {
+            let drawn_card = self.main_deck.pop();
+
+            if drawn_card.is_none() {
+                return Err(());
+            }
+
+            drawn_out.push(drawn_card.unwrap());
+        }
+
+        Ok(drawn_out)
+    }
+
+    pub fn topdeck_hand(&mut self) {
+        self.main_deck.append(&mut self.hand);
+    }
+
+    pub fn shuffle(&mut self, rng: &mut ThreadRng) {
+        self.main_deck.shuffle(rng);
+    }
+
+    pub fn turn_hand_faceup(&mut self) {
+        for card in self.hand.iter_mut() {
+            card.set_faceup();
+        }
+    }
+}
