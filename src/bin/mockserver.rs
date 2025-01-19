@@ -72,6 +72,6 @@ fn main() {
             }
         }
 
-        println!("{:?}", play_field);
+        //println!("{:?}", play_field);
     }
 }

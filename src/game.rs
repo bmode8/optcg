@@ -6,7 +6,7 @@ use log::*;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use super::{card::*, mockclient::*, player::*};
+use super::{card::*, mockclient::*, player::*, *};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Turn {
@@ -414,16 +414,35 @@ impl PlayField {
                 debug!("(TURN) [MAIN]");
                 let player_action = current_rx.try_recv();
                 match player_action {
-                    Ok(PlayerAction::NoAction) => {
+                    Ok(PlayerAction::End) => {
                         self.turn_phase = End;
                         return;
                     }
                     Ok(_) => {}
                     Err(_e) => {}
                 }
-                current_tx
-                    .send(ServerMessage::PlayerDataPayload(current_player.clone()))
-                    .unwrap();
+                let public_state = PublicPlayfieldState::new(
+                    self.p1_life_area.clone(),
+                    self.p2_life_area.clone(),
+                    self.p1_stage_area.clone(),
+                    self.p2_stage_area.clone(),
+                    self.p1_character_area.clone(),
+                    self.p2_character_area.clone(),
+                    self.p1_rested_character_area.clone(),
+                    self.p2_rested_character_area.clone(),
+                    self.p1_active_don_area.clone(),
+                    self.p2_active_don_area.clone(),
+                    self.p1_rested_don_area.clone(),
+                    self.p2_rested_don_area.clone(),
+                );
+                send_updates(
+                    current_tx,
+                    other_tx,
+                    current_player,
+                    other_player,
+                    public_state,
+                );
+
                 current_tx.send(ServerMessage::TakeMainAction).unwrap();
             }
             BattleAttackStep => {}

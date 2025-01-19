@@ -16,6 +16,16 @@ pub struct Player {
 
 /// Game related implementations.
 impl Player {
+    pub fn empty() -> Player {
+        Player {
+            name: String::new(),
+            leader: Card::new(String::new(), String::new(), String::new(), CardCost(0), CardCategory::Character, None, None, Vec::new(), Vec::new(), Vec::new(), Vec::new(), Facing::FaceDown),
+            main_deck: Deck::new(),
+            don_deck: Deck::new(),
+            hand: Deck::new(),
+            trash: Deck::new(),
+        }
+    }
     pub fn draw(&mut self, n: i32) -> Result<(), ()> {
         for _ in 0..n {
             let drawn_card = self.main_deck.pop();
@@ -24,7 +34,8 @@ impl Player {
                 error!("COULD NOT DRAW CARD");
                 return Err(());
             }
-            let drawn_card = drawn_card.unwrap();
+            let mut drawn_card = drawn_card.unwrap();
+            drawn_card.set_faceup();
             debug!("DRAWN CARD: {}", drawn_card);
             self.hand.push(drawn_card);
         }
@@ -41,7 +52,7 @@ impl Player {
                 return drawn_don;
             }
 
-            drawn_don.push(drawn_card.unwrap());
+            drawn_don.push(drawn_card.unwrap().with_faceup());
         }
 
         drawn_don

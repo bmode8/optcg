@@ -1,25 +1,10 @@
 use std::io::stdin;
 use std::sync::mpsc::{Receiver, Sender};
 
-use serde::{Deserialize, Serialize};
-
 use super::game::*;
 use super::player::*;
+use super::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PlayerAction {
-    TakeMulligan,
-    NoAction,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ServerMessage {
-    QueryMulligan,
-    TakeMainAction,
-    PlayerDataPayload(Box<Player>),
-    OtherPlayerDataPayload(Box<Player>),
-    PublicPlayfieldStateDataPayload(Box<PublicPlayfieldState>),
-}
 
 pub struct MockPlayerClient {
     pub this_player: Box<Player>,
@@ -33,6 +18,8 @@ impl MockPlayerClient {
     pub fn handle_messages(&mut self) {
         while let Ok(message) = self.rx.try_recv() {
             match message {
+                ServerMessage::Connected => { }
+                ServerMessage::RequestDeck => { }
                 ServerMessage::QueryMulligan => {
                     self.respond_to_query_mulligan();
                 }
@@ -81,14 +68,46 @@ impl MockPlayerClient {
         println!("Action: ");
         let mut input = String::new();
         stdin().read_line(&mut input).unwrap();
-        let cleaned_input = input.trim().to_lowercase();
-        let cleaned_input = cleaned_input.as_str();
+        let main_action = parse_main_action(input.trim().to_lowercase().as_str());
 
-        match cleaned_input {
-            "end" => {
-                self.tx.send(PlayerAction::NoAction).unwrap();
+        match main_action {
+
+            PlayerAction::End => {
+                self.tx.send(PlayerAction::End).unwrap();
             }
             _ => self.respond_to_take_main_action(),
         }
+    }
+}
+
+fn parse_main_action(input: &str) -> PlayerAction {
+    use PlayerAction::*;
+
+    let cleaned_input = input.trim().to_lowercase();
+    let cleaned_input = cleaned_input.as_str();
+
+    if cleaned_input == "" { return NoAction; }
+
+    let words: Vec<_> = cleaned_input.split_whitespace().collect();
+
+    match words[0] {
+        "help" => {
+            println!("These are the following commands you can use during the main phase:");
+            println!("help - Show this help message.");
+            println!("hand - Show your hand.");
+            println!("board - Examine the current board state.");
+            println!("examine <place> <card number> - Examine a card that is in your hand or face up on the board for its full text.");
+            println!("play <card number> - Play a card from your hand.");
+            println!("activate <card number> - Activate a card effect on the board.");
+            println!("attach <card number> - Attach a DON!! card from your hand.");
+            println!("battle <card number> - Initiate a battle with a character from the board. 
+                      Your leader is represented by 'L' instead of a number.");
+            println!("end - End your turn.");
+            NoAction
+        },
+        "end" => {
+            End
+        }
+        _ => NoAction,
     }
 }

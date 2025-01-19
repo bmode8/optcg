@@ -1,5 +1,7 @@
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 pub mod card;
 pub mod game;
 pub mod mockclient;
@@ -7,6 +9,32 @@ pub mod player;
 
 use card::*;
 use game::*;
+use player::*;
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PlayerAction {
+    Idle, // Heartbeat for the client to send the server.
+    ReportDeck(String),
+    TakeMulligan,
+    NoAction,
+    MainActivateCardEffect(usize),
+    MainPlayCard(usize),
+    MainAttachDon(usize),
+    MainBattle(usize),
+    End,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ServerMessage {
+    Connected,
+    RequestDeck,
+    QueryMulligan,
+    TakeMainAction,
+    PlayerDataPayload(Box<Player>),
+    OtherPlayerDataPayload(Box<Player>),
+    PublicPlayfieldStateDataPayload(Box<PublicPlayfieldState>),
+}
 
 impl fmt::Display for CardColor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
