@@ -19,7 +19,20 @@ impl Player {
     pub fn empty() -> Player {
         Player {
             name: String::new(),
-            leader: Card::new(String::new(), String::new(), String::new(), CardCost(0), CardCategory::Character, None, None, Vec::new(), Vec::new(), Vec::new(), Vec::new(), Facing::FaceDown),
+            leader: Card::new(
+                String::new(),
+                String::new(),
+                String::new(),
+                CardCost(0),
+                CardCategory::Character,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Facing::FaceDown,
+            ),
             main_deck: Deck::new(),
             don_deck: Deck::new(),
             hand: Deck::new(),
@@ -77,7 +90,7 @@ impl Player {
         self.main_deck.append(&mut self.hand);
     }
 
-    pub fn shuffle(&mut self, rng: &mut ThreadRng) {
+    pub fn shuffle(&mut self, rng: &mut StdRng) {
         self.main_deck.shuffle(rng);
     }
 

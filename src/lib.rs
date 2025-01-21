@@ -11,7 +11,6 @@ use card::*;
 use game::*;
 use player::*;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlayerAction {
     Idle, // Heartbeat for the client to send the server.

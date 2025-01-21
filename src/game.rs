@@ -2,11 +2,17 @@
 
 use std::sync::mpsc::{channel, Receiver, Sender};
 
+use futures::prelude::*;
 use log::*;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tokio::net::tcp::{ReadHalf, WriteHalf};
+use tokio_serde::formats::*;
+use tokio_serde::Framed;
+use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-use super::{card::*, mockclient::*, player::*, *};
+use super::{card::*, player::*, *};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Turn {
@@ -16,6 +22,50 @@ pub enum Turn {
 
 pub type PlayerId = Turn;
 
+pub struct GameServer<'stream> {
+    pub game: PlayField,
+    pub p1_client: PlayerClient<'stream>,
+    pub p2_client: PlayerClient<'stream>,
+}
+
+pub struct PlayerClient<'stream> {
+    pub player: Box<Player>,
+    pub reader: Framed<
+        FramedRead<ReadHalf<'stream>, LengthDelimitedCodec>,
+        Value,
+        Value,
+        Json<Value, Value>,
+    >,
+    pub writer: Framed<
+        FramedWrite<WriteHalf<'stream>, LengthDelimitedCodec>,
+        Value,
+        Value,
+        Json<Value, Value>,
+    >,
+}
+
+impl<'stream> PlayerClient<'stream> {
+    pub async fn send_message(&mut self, action: ServerMessage) {
+        self.writer
+            .send(serde_json::from_str(serde_json::to_string(&action).unwrap().as_str()).unwrap())
+            .await
+            .unwrap();
+    }
+
+    pub async fn receive_next_nonidle_action(&mut self) -> PlayerAction {
+        let mut count = 0;
+        loop {
+            let action: PlayerAction =
+                serde_json::from_value(self.reader.try_next().await.unwrap().unwrap()).unwrap();
+
+            match action {
+                PlayerAction::Idle => {}
+                _ => return action,
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PlayField {
     pub turn: Turn,
@@ -23,10 +73,6 @@ pub struct PlayField {
     pub turn_n: i32,
     pub player_1: Box<Player>,
     pub player_2: Box<Player>,
-    pub p1_sender: Sender<ServerMessage>,
-    pub p2_sender: Sender<ServerMessage>,
-    pub p1_receiver: Receiver<PlayerAction>,
-    pub p2_receiver: Receiver<PlayerAction>,
     pub p1_life_area: Deck,
     pub p2_life_area: Deck,
     pub p1_stage_area: Deck,
@@ -39,7 +85,7 @@ pub struct PlayField {
     pub p2_active_don_area: Deck,
     pub p1_rested_don_area: Deck,
     pub p2_rested_don_area: Deck,
-    pub rng: ThreadRng,
+    pub rng: StdRng,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -125,17 +171,18 @@ impl PublicPlayfieldState {
 }
 
 impl PlayField {
-    pub fn setup(
+    pub async fn setup<'stream>(
         mut player_1: Player,
         mut player_2: Player,
-    ) -> (PlayField, MockPlayerClient, MockPlayerClient) {
-        let (p1_sender, p1_server_receiver) = channel();
-        let (p2_sender, p2_server_receiver) = channel();
-
-        let (p1_client_sender, p1_receiver) = channel();
-        let (p2_client_sender, p2_receiver) = channel();
-
-        let mut rng = thread_rng();
+        mut p1_client: &mut PlayerClient<'stream>,
+        mut p2_client: &mut PlayerClient<'stream>,
+    ) -> PlayField {
+        let mut rng = StdRng::seed_from_u64(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as u64,
+        );
 
         player_1.shuffle(&mut rng);
         player_2.shuffle(&mut rng);
@@ -147,48 +194,36 @@ impl PlayField {
         let mut player_2 = Box::new(player_2);
         let public_playfield_state = Box::new(PublicPlayfieldState::empty());
 
-        let mut player_1_client = MockPlayerClient {
-            this_player: player_1.clone(),
-            other_player: player_2.public_clone(),
-            public_playfield_state: public_playfield_state.clone(),
-            tx: p1_client_sender,
-            rx: p1_server_receiver,
-        };
+        p1_client.send_message(ServerMessage::PlayerDataPayload(player_1.clone())).await;
+        p2_client.send_message(ServerMessage::PlayerDataPayload(player_2.clone())).await;
+        p1_client.send_message(ServerMessage::OtherPlayerDataPayload(player_2.public_clone())).await;
+        p2_client.send_message(ServerMessage::OtherPlayerDataPayload(player_1.public_clone())).await;
+        p1_client.send_message(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(PublicPlayfieldState::empty()))).await;
+        p2_client.send_message(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(PublicPlayfieldState::empty()))).await;
 
-        let mut player_2_client = MockPlayerClient {
-            this_player: player_2.clone(),
-            other_player: player_1.public_clone(),
-            public_playfield_state: public_playfield_state.clone(),
-            tx: p2_client_sender,
-            rx: p2_server_receiver,
-        };
-
-        p1_sender.send(ServerMessage::QueryMulligan).unwrap();
-        player_1_client.handle_messages();
-        let p1_mulligan = p1_receiver.recv().unwrap();
+        // Query Mulligan
+        p1_client.send_message(ServerMessage::QueryMulligan).await;
+        let p1_mulligan = p1_client.receive_next_nonidle_action().await;
 
         if let PlayerAction::TakeMulligan = p1_mulligan {
             player_1.topdeck_hand();
             player_1.shuffle(&mut rng);
             player_1.draw(5).unwrap();
-            p1_sender
-                .send(ServerMessage::PlayerDataPayload(player_1.clone()))
-                .unwrap();
-            player_1_client.handle_messages();
+            p1_client
+                .send_message(ServerMessage::PlayerDataPayload(player_1.clone()))
+                .await;
         }
 
-        p2_sender.send(ServerMessage::QueryMulligan).unwrap();
-        player_2_client.handle_messages();
-        let p2_mulligan = p2_receiver.recv().unwrap();
+        p2_client.send_message(ServerMessage::QueryMulligan).await;
+        let p2_mulligan = p2_client.receive_next_nonidle_action().await;
 
         if let PlayerAction::TakeMulligan = p2_mulligan {
             player_2.topdeck_hand();
             player_2.shuffle(&mut rng);
             player_2.draw(5).unwrap();
-            p2_sender
-                .send(ServerMessage::PlayerDataPayload(player_2.clone()))
-                .unwrap();
-            player_2_client.handle_messages();
+            p2_client
+                .send_message(ServerMessage::PlayerDataPayload(player_2.clone()))
+                .await;
         }
 
         let p1_life = player_1.draw_out(player_1.leader.life()).unwrap();
@@ -196,35 +231,32 @@ impl PlayField {
 
         // Begin turn 1.
         let p1_don = player_1.draw_don(1);
+        
+        p1_client.send_message(ServerMessage::PlayerDataPayload(player_1.clone())).await;
+        p2_client.send_message(ServerMessage::PlayerDataPayload(player_2.clone())).await;
+        p1_client.send_message(ServerMessage::OtherPlayerDataPayload(player_2.public_clone())).await;
+        p2_client.send_message(ServerMessage::OtherPlayerDataPayload(player_1.public_clone())).await;
 
-        (
-            PlayField {
-                turn: Turn::P1,
-                turn_phase: TurnPhase::Main,
-                turn_n: 1,
-                player_1,
-                player_2,
-                p1_sender,
-                p2_sender,
-                p1_receiver,
-                p2_receiver,
-                p1_life_area: p1_life,
-                p2_life_area: p2_life,
-                p1_stage_area: Deck::new(),
-                p2_stage_area: Deck::new(),
-                p1_character_area: Deck::new(),
-                p2_character_area: Deck::new(),
-                p1_rested_character_area: Deck::new(),
-                p2_rested_character_area: Deck::new(),
-                p1_active_don_area: p1_don,
-                p2_active_don_area: Deck::new(),
-                p1_rested_don_area: Deck::new(),
-                p2_rested_don_area: Deck::new(),
-                rng,
-            },
-            player_1_client,
-            player_2_client,
-        )
+        PlayField {
+            turn: Turn::P1,
+            turn_phase: TurnPhase::Main,
+            turn_n: 1,
+            player_1,
+            player_2,
+            p1_life_area: p1_life,
+            p2_life_area: p2_life,
+            p1_stage_area: Deck::new(),
+            p2_stage_area: Deck::new(),
+            p1_character_area: Deck::new(),
+            p2_character_area: Deck::new(),
+            p1_rested_character_area: Deck::new(),
+            p2_rested_character_area: Deck::new(),
+            p1_active_don_area: p1_don,
+            p2_active_don_area: Deck::new(),
+            p1_rested_don_area: Deck::new(),
+            p2_rested_don_area: Deck::new(),
+            rng,
+        }
     }
 
     pub fn check_loser(&self) -> Option<PlayerId> {
@@ -250,62 +282,58 @@ impl PlayField {
         todo!()
     }
 
-    pub fn step(&mut self) {
+    pub async fn step<'stream>(
+        &mut self,
+        mut p1_client: &mut PlayerClient<'stream>,
+        mut p2_client: &mut PlayerClient<'stream>,
+    ) {
         use TurnPhase::*;
+
+        debug!("{:?}, {:?}, {:?}", self.turn, self.turn_phase, self.turn_n);
 
         let (current_player, other_player) = match self.turn {
             Turn::P1 => (&mut self.player_1, &mut self.player_2),
             Turn::P2 => (&mut self.player_2, &mut self.player_1),
         };
 
-        let (current_tx, current_rx, other_tx, other_rx) = match self.turn {
-            Turn::P1 => (
-                &mut self.p1_sender,
-                &mut self.p1_receiver,
-                &mut self.p2_sender,
-                &mut self.p2_receiver,
-            ),
-            Turn::P2 => (
-                &mut self.p2_sender,
-                &mut self.p2_receiver,
-                &mut self.p1_sender,
-                &mut self.p1_receiver,
-            ),
+        let (current_player_client, other_player_client) = match self.turn {
+            Turn::P1 => (p1_client, p2_client),
+            Turn::P2 => (p2_client, p1_client),
         };
 
-        fn send_updates(
-            current_tx: &mut Sender<ServerMessage>,
-            other_tx: &mut Sender<ServerMessage>,
+        async fn send_updates<'stream>(
+            current_player_client: &mut PlayerClient<'stream>,
+            other_player_client: &mut PlayerClient<'stream>,
             current_player: &Box<Player>,
             other_player: &Box<Player>,
             public_field_state: PublicPlayfieldState,
         ) {
-            current_tx
-                .send(ServerMessage::PlayerDataPayload(current_player.clone()))
-                .unwrap();
-            current_tx
-                .send(ServerMessage::OtherPlayerDataPayload(
+            current_player_client
+                .send_message(ServerMessage::PlayerDataPayload(current_player.clone()))
+                .await;
+            current_player_client
+                .send_message(ServerMessage::OtherPlayerDataPayload(
                     other_player.public_clone(),
                 ))
-                .unwrap();
-            current_tx
-                .send(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(
+                .await;
+            current_player_client
+                .send_message(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(
                     public_field_state.clone(),
                 )))
-                .unwrap();
-            other_tx
-                .send(ServerMessage::PlayerDataPayload(other_player.clone()))
-                .unwrap();
-            other_tx
-                .send(ServerMessage::OtherPlayerDataPayload(
+                .await;
+            other_player_client
+                .send_message(ServerMessage::PlayerDataPayload(other_player.clone()))
+                .await;
+            other_player_client
+                .send_message(ServerMessage::OtherPlayerDataPayload(
                     current_player.public_clone(),
                 ))
-                .unwrap();
-            other_tx
-                .send(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(
+                .await;
+            other_player_client
+                .send_message(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(
                     public_field_state,
                 )))
-                .unwrap();
+                .await;
         }
 
         // Behold! A state machine!
@@ -341,8 +369,8 @@ impl PlayField {
                     self.p2_rested_don_area.clone(),
                 );
                 send_updates(
-                    current_tx,
-                    other_tx,
+                    current_player_client,
+                    other_player_client,
                     current_player,
                     other_player,
                     public_state,
@@ -374,12 +402,12 @@ impl PlayField {
                     self.p2_rested_don_area.clone(),
                 );
                 send_updates(
-                    current_tx,
-                    other_tx,
+                    current_player_client,
+                    other_player_client,
                     current_player,
                     other_player,
                     public_state,
-                );
+                ).await;
                 self.turn_phase = Don;
             }
             Don => {
@@ -401,26 +429,17 @@ impl PlayField {
                     self.p2_rested_don_area.clone(),
                 );
                 send_updates(
-                    current_tx,
-                    other_tx,
+                    current_player_client,
+                    other_player_client,
                     current_player,
                     other_player,
                     public_state,
-                );
+                ).await;
 
                 self.turn_phase = Main;
             }
             Main => {
                 debug!("(TURN) [MAIN]");
-                let player_action = current_rx.try_recv();
-                match player_action {
-                    Ok(PlayerAction::End) => {
-                        self.turn_phase = End;
-                        return;
-                    }
-                    Ok(_) => {}
-                    Err(_e) => {}
-                }
                 let public_state = PublicPlayfieldState::new(
                     self.p1_life_area.clone(),
                     self.p2_life_area.clone(),
@@ -436,14 +455,24 @@ impl PlayField {
                     self.p2_rested_don_area.clone(),
                 );
                 send_updates(
-                    current_tx,
-                    other_tx,
+                    current_player_client,
+                    other_player_client,
                     current_player,
                     other_player,
                     public_state,
-                );
+                ).await;
 
-                current_tx.send(ServerMessage::TakeMainAction).unwrap();
+                debug!("Sending {:?} to {}", ServerMessage::TakeMainAction, current_player.name);
+                current_player_client.send_message(ServerMessage::TakeMainAction).await;
+                let player_action = current_player_client.receive_next_nonidle_action().await;
+                debug!("Received {:?}", player_action);
+                match player_action {
+                    PlayerAction::End => {
+                        self.turn_phase = End;
+                        return;
+                    }
+                    _ => {}
+                }
             }
             BattleAttackStep => {}
             BattleBlockStep => {}
@@ -451,6 +480,7 @@ impl PlayField {
             BattleDamageStep => {}
             BattleEnd => {}
             End => {
+                debug!("(TURN) [END]");
                 self.turn_n += 1;
                 self.turn = match self.turn {
                     Turn::P1 => Turn::P2,

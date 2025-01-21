@@ -5,7 +5,6 @@ use super::game::*;
 use super::player::*;
 use super::*;
 
-
 pub struct MockPlayerClient {
     pub this_player: Box<Player>,
     pub other_player: Box<Player>,
@@ -18,8 +17,8 @@ impl MockPlayerClient {
     pub fn handle_messages(&mut self) {
         while let Ok(message) = self.rx.try_recv() {
             match message {
-                ServerMessage::Connected => { }
-                ServerMessage::RequestDeck => { }
+                ServerMessage::Connected => {}
+                ServerMessage::RequestDeck => {}
                 ServerMessage::QueryMulligan => {
                     self.respond_to_query_mulligan();
                 }
@@ -71,7 +70,6 @@ impl MockPlayerClient {
         let main_action = parse_main_action(input.trim().to_lowercase().as_str());
 
         match main_action {
-
             PlayerAction::End => {
                 self.tx.send(PlayerAction::End).unwrap();
             }
@@ -86,7 +84,9 @@ fn parse_main_action(input: &str) -> PlayerAction {
     let cleaned_input = input.trim().to_lowercase();
     let cleaned_input = cleaned_input.as_str();
 
-    if cleaned_input == "" { return NoAction; }
+    if cleaned_input == "" {
+        return NoAction;
+    }
 
     let words: Vec<_> = cleaned_input.split_whitespace().collect();
 
@@ -100,14 +100,14 @@ fn parse_main_action(input: &str) -> PlayerAction {
             println!("play <card number> - Play a card from your hand.");
             println!("activate <card number> - Activate a card effect on the board.");
             println!("attach <card number> - Attach a DON!! card from your hand.");
-            println!("battle <card number> - Initiate a battle with a character from the board. 
-                      Your leader is represented by 'L' instead of a number.");
+            println!(
+                "battle <card number> - Initiate a battle with a character from the board. 
+                      Your leader is represented by 'L' instead of a number."
+            );
             println!("end - End your turn.");
             NoAction
-        },
-        "end" => {
-            End
         }
+        "end" => End,
         _ => NoAction,
     }
 }
