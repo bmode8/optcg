@@ -266,7 +266,7 @@ pub fn install_card_data() {
         vec![Red],
         vec!["Animal".to_string(), "Straw Hat Crew".to_string()],
         vec![
-            TimedEffect(CounterPhase, Zero, vec![PlusPowerForBattle(3000)]),
+            TimedEffect(Counter, Zero, vec![PlusPowerForBattle(3000)]),
             TimedEffect(Trigger, Zero, vec![PlusPower(1000)]),
         ],
         FaceDown,
@@ -284,8 +284,8 @@ pub fn install_card_data() {
         vec![Red],
         vec!["Supernovas".to_string(), "Straw Hat Crew".to_string()],
         vec![
-            TimedEffect(Main, Zero, vec![KnockOutWithPowerLessThan(6000)]),
-            TimedEffect(Trigger, Zero, vec![KnockOutWithPowerLessThan(6000)]),
+            TimedEffect(Main, Zero, vec![KnockOutWithPowerEqualOrLessThan(6000)]),
+            TimedEffect(Trigger, Zero, vec![KnockOutWithPowerEqualOrLessThan(6000)]),
         ],
         FaceDown,
     );

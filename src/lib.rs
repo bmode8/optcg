@@ -4,12 +4,55 @@ use serde::{Deserialize, Serialize};
 
 pub mod card;
 pub mod game;
-pub mod mockclient;
 pub mod player;
 
 use card::*;
 use game::*;
 use player::*;
+
+pub fn print_hand(hand: &Deck) {
+    for (i, card) in hand.iter().enumerate() {
+        println!("{i}");
+
+        print!("{}", card.cost);
+        for color in card.color.iter() {
+            print!("{}", color);
+        }
+
+        println!(" {}", card.name);
+        println!("{}", card.category);
+        if card.types.len() > 0 {
+            print!("{}", card.types[0]);
+            for t in card.types.iter().skip(1) {
+                print!("/{}", t);
+            }
+        }
+
+        println!();
+        match card.power {
+            Some(power) => print!("+{} ", power),
+            None => (),
+        }
+
+        if card.attribute.len() > 0 {
+            print!("{}", card.attribute[0]);
+            for att in card.attribute.iter().skip(1) {
+                print!("/{}", att);
+            }
+        }
+        println!();
+        for effect in card.effects.iter() {
+            println!("{} ", effect);
+        }
+
+        match card.counter_power {
+            Some(power) => println!("Counter +{} ", power),
+            None => (),
+        };
+
+        println!();
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlayerAction {
@@ -22,14 +65,20 @@ pub enum PlayerAction {
     MainAttachDon(usize),
     MainBattle(usize),
     End,
+    TargetOpposingCharacter(usize)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
     Connected,
+    PlayerId(Turn),
     RequestDeck,
     QueryMulligan,
     TakeMainAction,
+    InsufficientDon,
+    CannotPlayCounterEventDuringMainPhase,
+    QueryTargetOpposingCharacter,
+    NoTargetsMeetConditions,
     PlayerDataPayload(Box<Player>),
     OtherPlayerDataPayload(Box<Player>),
     PublicPlayfieldStateDataPayload(Box<PublicPlayfieldState>),
@@ -114,9 +163,10 @@ impl fmt::Display for Timing {
             WhenAttacking => val = "[When Attacking]".into(),
             ActivateMain => val = "[Activate:Main]".into(),
             Main => val = "[Main]".into(),
-            CounterPhase => val = "[Counter]".into(),
+            Counter => val = "[Counter]".into(),
             DuringTurn => val = "".into(),
             Trigger => val = "[Trigger]".into(),
+            Always => val = "".into(),
         }
         write!(f, "{val}")?;
         Ok(())
@@ -151,7 +201,7 @@ impl fmt::Display for Effect {
             Draw(i) => write!(f, "Draw {}", i)?,
             GiveOtherCardPower(i) => write!(f, "Give your Leader or 1 of your Characters other than this card +{i} power during this turn.")?,
             GiveRestedDon(i) => write!(f, "Give this Leader or 1 of your Characters {i} rested DON!! card(s).")?,
-            KnockOutWithPowerLessThan(i) => write!(f, "K.O. 1 of your opponent's Characters with a power of {i} or less.")?,
+            KnockOutWithPowerEqualOrLessThan(i) => write!(f, "K.O. 1 of your opponent's Characters with a power of {i} or less.")?,
             OncePerTurn => write!(f, "Once Per Turn")?,
             OpponentNoBlocker(condition) => {
                 match condition {

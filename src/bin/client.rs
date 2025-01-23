@@ -1,4 +1,3 @@
-#![allow(unused)]
 use std::io::stdin;
 
 use futures::prelude::*;
@@ -13,7 +12,7 @@ use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 use optcg::game::*;
 use optcg::player::*;
-use optcg::{PlayerAction, ServerMessage};
+use optcg::{print_hand, PlayerAction, ServerMessage};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,6 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     debug!("Connected to server.");
 
     let mut client = Client::new(
+        Turn::P1, // this is a placeholder.
         Box::new(Player::empty()),
         Box::new(Player::empty()),
         Box::new(PublicPlayfieldState::empty()),
@@ -38,11 +38,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         client.handle_messages().await;
         client.send_action(PlayerAction::Idle).await;
-        //tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
 }
 
 struct Client<'stream> {
+    this_id: Turn,
     this_player: Box<Player>,
     other_player: Box<Player>,
     public_playfield_state: Box<PublicPlayfieldState>,
@@ -62,6 +62,7 @@ struct Client<'stream> {
 
 impl<'stream> Client<'stream> {
     pub fn new(
+        this_id: Turn,
         this_player: Box<Player>,
         other_player: Box<Player>,
         public_playfield_state: Box<PublicPlayfieldState>,
@@ -76,6 +77,7 @@ impl<'stream> Client<'stream> {
         let writer =
             tokio_serde::SymmetricallyFramed::new(write_frame, SymmetricalJson::<Value>::default());
         Self {
+            this_id,
             this_player,
             other_player,
             public_playfield_state,
@@ -84,22 +86,40 @@ impl<'stream> Client<'stream> {
         }
     }
 
+    pub async fn send_action(&mut self, action: PlayerAction) {
+        self.writer
+            .send(serde_json::from_str(serde_json::to_string(&action).unwrap().as_str()).unwrap())
+            .await
+            .unwrap();
+    }
+
     pub async fn handle_messages(&mut self) {
         while let Some(next) = self.reader.try_next().await.unwrap() {
-            let message = serde_json::from_value::<ServerMessage>(next).unwrap(); 
+            let message = serde_json::from_value::<ServerMessage>(next).unwrap();
             match message {
-                ServerMessage::Connected => {
+                ServerMessage::Connected => {}
+                ServerMessage::PlayerId(id) => {
+                    self.this_id = id;
                 }
                 ServerMessage::RequestDeck => {}
                 ServerMessage::QueryMulligan => {
-                    println!("Hand: ");
-                    for card in self.this_player.hand.iter() {
-                        println!("{:?}", card);
-                    }
+                    print_hand(&self.this_player.hand);
                     return self.respond_to_query_mulligan().await;
                 }
                 ServerMessage::TakeMainAction => {
-                    self.respond_to_take_main_action().await;
+                    return self.respond_to_take_main_action().await;
+                }
+                ServerMessage::InsufficientDon => {
+                    println!("Insufficient DON!! to play this card.");
+                }
+                ServerMessage::CannotPlayCounterEventDuringMainPhase => {
+                    println!("Cannot play a counter event during the main phase.");
+                }
+                ServerMessage::NoTargetsMeetConditions => {
+                    println!("No targets meet the conditions for this effect.");
+                }
+                ServerMessage::QueryTargetOpposingCharacter => {
+                    return self.respond_to_query_target_opposing_character().await;
                 }
                 ServerMessage::PlayerDataPayload(player) => {
                     self.this_player = player;
@@ -128,32 +148,45 @@ impl<'stream> Client<'stream> {
         }
     }
 
-    pub async fn send_action(&mut self, action: PlayerAction) {
-        self.writer
-            .send(serde_json::from_str(serde_json::to_string(&action).unwrap().as_str()).unwrap())
-            .await
-            .unwrap();
-    }
-
     pub async fn respond_to_take_main_action(&mut self) {
         loop {
             println!("Hand: ");
-            for (i, card) in self.this_player.hand.iter().enumerate() {
-                println!("{i}\n{:?}", card);
-            }
+            print_hand(&self.this_player.hand);
 
             println!("Action: ");
             let mut input = String::new();
             stdin().read_line(&mut input).unwrap();
             let main_action = parse_main_action(input.trim().to_lowercase().as_str());
+            return self.send_action(main_action).await;
+        }
+    }
 
-            match main_action {
-                PlayerAction::End => {
-                    return self.send_action(PlayerAction::End).await;
+    pub async fn respond_to_query_target_opposing_character(&mut self) {
+        println!("Select a Character to target:");
+        let target_idx: usize;
+        match self.this_id {
+            Turn::P1 => {
+                for (i, character) in self.public_playfield_state.p2_character_area.iter().enumerate() {
+                    println!("{i}: {}", character);
                 }
-                _ => continue,
+                let mut input = String::new();
+                stdin().read_line(&mut input).unwrap();
+
+                target_idx = input.trim().parse::<usize>().unwrap();
+            }
+            Turn::P2 => {
+                for (i, character) in self.public_playfield_state.p1_character_area.iter().enumerate() {
+                    println!("{i}: {}", character);
+
+                }
+                let mut input = String::new();
+                stdin().read_line(&mut input).unwrap();
+
+                target_idx = input.trim().parse::<usize>().unwrap();
             }
         }
+
+        self.send_action(PlayerAction::TargetOpposingCharacter(target_idx)).await;
     }
 }
 
@@ -192,6 +225,13 @@ fn parse_main_action(input: &str) -> PlayerAction {
             NoAction
         }
         "end" => End,
+        "play" => {
+            if words.len() < 2 {
+                return NoAction;
+            }
+            let card_number = words[1].parse::<usize>().unwrap();
+            MainPlayCard(card_number)
+        }
         _ => NoAction,
     }
 }

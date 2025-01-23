@@ -1,25 +1,16 @@
-#![allow(unused)]
-use std::collections::HashMap;
-use std::fmt;
 use std::fs::File;
-use std::io::{stdin, Read, Write};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::io::Read;
 
 use futures::prelude::*;
 use log::*;
-use rand::prelude::*;
-use rand::seq::SliceRandom;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use simplelog::*;
 use tokio::net::TcpListener;
-use tokio::*;
 use tokio_serde::formats::*;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 use optcg::card::*;
 use optcg::game::*;
-use optcg::mockclient::*;
 use optcg::player::*;
 use optcg::*;
 
@@ -57,7 +48,7 @@ async fn main() -> std::io::Result<()> {
         hand: vec![],
         trash: vec![],
     };
-    
+
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
 
     loop {
@@ -72,10 +63,10 @@ async fn main() -> std::io::Result<()> {
             let p1_read = FramedRead::new(p1_rx, LengthDelimitedCodec::new());
             let p1_write = FramedWrite::new(p1_tx, LengthDelimitedCodec::new());
 
-            let mut p1_reader =
+            let p1_reader =
                 tokio_serde::SymmetricallyFramed::new(p1_read, SymmetricalJson::<Value>::default());
 
-            let mut p1_writer = tokio_serde::SymmetricallyFramed::new(
+            let p1_writer = tokio_serde::SymmetricallyFramed::new(
                 p1_write,
                 SymmetricalJson::<Value>::default(),
             );
@@ -90,10 +81,10 @@ async fn main() -> std::io::Result<()> {
             let p2_read = FramedRead::new(p2_rx, LengthDelimitedCodec::new());
             let p2_write = FramedWrite::new(p2_tx, LengthDelimitedCodec::new());
 
-            let mut p2_reader =
+            let p2_reader =
                 tokio_serde::SymmetricallyFramed::new(p2_read, SymmetricalJson::<Value>::default());
 
-            let mut p2_writer = tokio_serde::SymmetricallyFramed::new(
+            let p2_writer = tokio_serde::SymmetricallyFramed::new(
                 p2_write,
                 SymmetricalJson::<Value>::default(),
             );
@@ -109,13 +100,14 @@ async fn main() -> std::io::Result<()> {
                 player_2.clone(),
                 &mut p1_client,
                 &mut p2_client,
-            ).await;
+            )
+            .await;
 
             // Main loop for a game.
             loop {
                 p1_client.send_message(ServerMessage::Connected).await;
                 p2_client.send_message(ServerMessage::Connected).await;
-                
+
                 let winner: Option<Turn> = playfield.check_loser(); // `Turn` is a unique representation of each player, so it works best here.
                 if let Some(winner) = winner {
                     println!("Player {:?} wins!", winner);
@@ -131,13 +123,10 @@ async fn main() -> std::io::Result<()> {
                 }
 
                 while let Some(next) = p2_client.reader.try_next().await.unwrap() {
-                    let message = serde_json::from_value::<PlayerAction>(next).unwrap(); 
+                    let message = serde_json::from_value::<PlayerAction>(next).unwrap();
                     execute_player_action(message).await.unwrap();
                     break;
                 }
-                
-                
-                //tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             }
         });
     }
@@ -148,20 +137,35 @@ async fn execute_player_action(player_action: PlayerAction) -> std::io::Result<(
     match player_action {
         Idle => {
             debug!("Idle");
-            return Ok(())
+            return Ok(());
         }
-        ReportDeck(_) => {}
-        TakeMulligan => {}
-        NoAction => {}
-        MainActivateCardEffect(_) => {}
-        MainPlayCard(_) => {}
-        MainAttachDon(_) => {}
-        MainBattle(_) => {}
-        End => { 
+        ReportDeck(_) => {
+            panic!()
+        }
+        TakeMulligan => {
+            panic!()
+        }
+        NoAction => {
+            panic!()
+        }
+        MainActivateCardEffect(_) => {
+            panic!()
+        }
+        MainPlayCard(_) => {
+            panic!("I don't know how to play a card yet.")
+        }
+        MainAttachDon(_) => {
+            panic!()
+        }
+        MainBattle(_) => {
+            panic!()
+        }
+        End => {
             debug!("End");
-            return Ok(())
+            return Ok(());
+        }
+        TargetOpposingCharacter(_) => {
+            panic!()
         }
     }
-
-    Ok(())
 }
