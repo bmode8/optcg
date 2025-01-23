@@ -396,7 +396,8 @@ impl PlayField {
 
         debug!("{:?}, {:?}, {:?}", self.turn, self.turn_phase, self.turn_n);
 
-        let (mut current_player_area, mut other_player_area, turn_info) = self.split_into_player_areas();
+        let (mut current_player_area, mut other_player_area, turn_info) =
+            self.split_into_player_areas();
 
         let (current_player_client, other_player_client) = match turn_info.turn {
             Turn::P1 => (p1_client, p2_client),
@@ -698,7 +699,7 @@ impl PlayField {
                                             _ => {} // also fine
                                         }
                                     }
-                                    _ => unreachable!() // not something that should happen.
+                                    _ => unreachable!(), // not something that should happen.
                                 }
                             }
                             _ => {} // not an event card.
@@ -736,10 +737,12 @@ impl PlayField {
 
                                                         }
                                                         Effect::KnockOutWithPowerEqualOrLessThan(x) => {
+                                                            // are there any valid targets on the field?
                                                             if other_player_area.character.iter().filter(|c| c.power.unwrap().0 <= x).count() == 0 {
                                                                 current_player_client.send_message(ServerMessage::NoTargetsMeetConditions).await;
                                                                 continue;
                                                             }
+
                                                             loop {
                                                                 // ask player to select an opponent's character with power less than x to knock out.
                                                                 current_player_client.send_message(ServerMessage::QueryTargetOpposingCharacter).await;
@@ -752,7 +755,7 @@ impl PlayField {
                                                                         }
 
                                                                         other_player_area.process_knock_out(i);
-                                                                        
+
                                                                         let public_state;
                                                                         match turn_info.turn {
                                                                             Turn::P1 => {
@@ -831,12 +834,8 @@ impl PlayField {
                                     _ => unreachable!(), // effects on event cards should be contained in a TimedEffect with Main timing.
                                 }
                             }
-                            CardCategory::Stage => {
-
-                            }
-                            CardCategory::Character => {
-
-                            }
+                            CardCategory::Stage => {}
+                            CardCategory::Character => {}
                             _ => unreachable!(),
                         }
                     }

@@ -65,7 +65,7 @@ pub enum PlayerAction {
     MainAttachDon(usize),
     MainBattle(usize),
     End,
-    TargetOpposingCharacter(usize)
+    TargetOpposingCharacter(usize),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

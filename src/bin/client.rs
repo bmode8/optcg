@@ -166,7 +166,12 @@ impl<'stream> Client<'stream> {
         let target_idx: usize;
         match self.this_id {
             Turn::P1 => {
-                for (i, character) in self.public_playfield_state.p2_character_area.iter().enumerate() {
+                for (i, character) in self
+                    .public_playfield_state
+                    .p2_character_area
+                    .iter()
+                    .enumerate()
+                {
                     println!("{i}: {}", character);
                 }
                 let mut input = String::new();
@@ -175,9 +180,13 @@ impl<'stream> Client<'stream> {
                 target_idx = input.trim().parse::<usize>().unwrap();
             }
             Turn::P2 => {
-                for (i, character) in self.public_playfield_state.p1_character_area.iter().enumerate() {
+                for (i, character) in self
+                    .public_playfield_state
+                    .p1_character_area
+                    .iter()
+                    .enumerate()
+                {
                     println!("{i}: {}", character);
-
                 }
                 let mut input = String::new();
                 stdin().read_line(&mut input).unwrap();
@@ -186,7 +195,8 @@ impl<'stream> Client<'stream> {
             }
         }
 
-        self.send_action(PlayerAction::TargetOpposingCharacter(target_idx)).await;
+        self.send_action(PlayerAction::TargetOpposingCharacter(target_idx))
+            .await;
     }
 }
 
