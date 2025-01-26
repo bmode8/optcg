@@ -850,16 +850,18 @@ impl PlayField {
                                                             // are there enough don? if not, tell player and move on from activating the effect and add the card to character area.
                                                             // if there are enough total don available, let player select `n` to put back in don deck or skip effect.
                                                             // then put those cards back in the don deck.
-                                                            // continue to processing the effect. 
+                                                            // continue to processing the effect.
                                                         }
-                                                        EffectCost::DonAttached(n) => unreachable!(),
+                                                        EffectCost::DonAttached(n) => {
+                                                            unreachable!()
+                                                        }
                                                         EffectCost::RestDon(n) => {
                                                             // are there enough active don? if not, tell player and move on from activating the effect and add the card to character area.
                                                             // prompt player for effect choice.
-                                                            // if they choose to activate the effect, rest `n` don cards. 
+                                                            // if they choose to activate the effect, rest `n` don cards.
                                                             // continue to processing the effect.
                                                         }
-                                                        EffectCost::Zero => { } // the intended representation of no additional cost.
+                                                        EffectCost::Zero => {} // the intended representation of no additional cost.
                                                     }
 
                                                     for e in effect.iter() {
@@ -872,9 +874,9 @@ impl PlayField {
                                                                 let mut don_to_give = vec![];
                                                                 match rested_don_number {
                                                                     0 => { continue }
-                                                                    1 => { don_to_give.push(current_player_area.rested_don.pop().unwrap()); } 
-                                                                    _ => { 
-                                                                        don_to_give.push(current_player_area.rested_don.pop().unwrap()); 
+                                                                    1 => { don_to_give.push(current_player_area.rested_don.pop().unwrap()); }
+                                                                    _ => {
+                                                                        don_to_give.push(current_player_area.rested_don.pop().unwrap());
                                                                         don_to_give.push(current_player_area.rested_don.pop().unwrap());
                                                                     }
                                                                 }
@@ -886,9 +888,9 @@ impl PlayField {
                                                                         PlayerAction::TargetSelfCharacterOrLeader(c) => {
                                                                             match c {
                                                                                 'l' => { current_player_area.player.leader.attached_don.append(&mut don_to_give); break; }
-                                                                                _ => { 
+                                                                                _ => {
                                                                                     let char_idx = c.to_digit(10).unwrap() as usize;
-                                                                                    if char_idx > current_player_area.character.len() - 1 { 
+                                                                                    if char_idx > current_player_area.character.len() - 1 {
                                                                                         current_player_client.send_message(ServerMessage::InvalidTarget).await;
                                                                                         continue;
                                                                                     }
@@ -899,7 +901,7 @@ impl PlayField {
                                                                         }
                                                                         _ => { }
                                                                     }
-                                                                }  
+                                                                }
                                                                 // give those rested don cards to the target.
                                                             }
                                                             Effect::KnockOutWithPowerEqualOrLessThan(x) => {}
@@ -919,12 +921,17 @@ impl PlayField {
                                         _ => {}
                                     }
                                 }
-                                if current_player_area.character.len() < MAX_CHARACTER_AREA as usize {
-                                    current_player_client.send_message(ServerMessage::DiscardCharacter).await;
-                                    let discarded_character = current_player_client.receive_next_nonidle_action().await;
+                                if current_player_area.character.len() < MAX_CHARACTER_AREA as usize
+                                {
+                                    current_player_client
+                                        .send_message(ServerMessage::DiscardCharacter)
+                                        .await;
+                                    let discarded_character =
+                                        current_player_client.receive_next_nonidle_action().await;
                                     match discarded_character {
                                         PlayerAction::DiscardCharacter(i) => {
-                                            let discarded_card = current_player_area.character.remove(i);
+                                            let discarded_card =
+                                                current_player_area.character.remove(i);
                                             current_player_area.player.trash.push(discarded_card);
                                         }
                                         _ => unreachable!(),

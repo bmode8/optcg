@@ -128,7 +128,9 @@ impl<'stream> Client<'stream> {
                     return self.respond_to_query_target_opposing_character().await;
                 }
                 ServerMessage::QueryTargetSelfCharacterOrLeader => {
-                    return self.respond_to_query_target_self_character_or_leader().await;
+                    return self
+                        .respond_to_query_target_self_character_or_leader()
+                        .await;
                 }
                 ServerMessage::PlayerDataPayload(player) => {
                     self.this_player = player;
@@ -251,57 +253,57 @@ impl<'stream> Client<'stream> {
     pub async fn respond_to_discard_character(&mut self) {
         println!("Discard which character?");
         match self.this_id {
-            Turn::P1 => {
-                loop {
-                    for (i, character) in self
-                        .public_playfield_state
-                        .p1_character_area
-                        .iter()
-                        .enumerate()
-                    {
-                        println!("{i}: {}", character);
-                    }
-                    let mut input = String::new();
-                    stdin().read_line(&mut input).unwrap();
-
-                    let target_idx = input.trim().parse::<usize>();
-                    if target_idx.is_err() { continue; }
-                    let target_idx = target_idx.unwrap();
-                    if target_idx > self.public_playfield_state.p1_character_area.len() - 1 {
-                        println!("Invalid target.");
-                        continue;
-                    }
-                    self.send_action(PlayerAction::DiscardCharacter(target_idx))
-                        .await;
-                    return;
+            Turn::P1 => loop {
+                for (i, character) in self
+                    .public_playfield_state
+                    .p1_character_area
+                    .iter()
+                    .enumerate()
+                {
+                    println!("{i}: {}", character);
                 }
-            }
-            Turn::P2 => {
-                loop {
-                    for (i, character) in self
-                        .public_playfield_state
-                        .p2_character_area
-                        .iter()
-                        .enumerate()
-                    {
-                        println!("{i}: {}", character);
-                    }
-                    let mut input = String::new();
-                    stdin().read_line(&mut input).unwrap();
+                let mut input = String::new();
+                stdin().read_line(&mut input).unwrap();
 
-                    let target_idx = input.trim().parse::<usize>();
-                    if target_idx.is_err() { continue; }
-                    let target_idx = target_idx.unwrap();
-                    if target_idx > self.public_playfield_state.p1_character_area.len() - 1 {
-                        println!("Invalid target.");
-                        continue;
-                    }
-                    self.send_action(PlayerAction::DiscardCharacter(target_idx))
-                        .await;
-
-                    return;
+                let target_idx = input.trim().parse::<usize>();
+                if target_idx.is_err() {
+                    continue;
                 }
-            }
+                let target_idx = target_idx.unwrap();
+                if target_idx > self.public_playfield_state.p1_character_area.len() - 1 {
+                    println!("Invalid target.");
+                    continue;
+                }
+                self.send_action(PlayerAction::DiscardCharacter(target_idx))
+                    .await;
+                return;
+            },
+            Turn::P2 => loop {
+                for (i, character) in self
+                    .public_playfield_state
+                    .p2_character_area
+                    .iter()
+                    .enumerate()
+                {
+                    println!("{i}: {}", character);
+                }
+                let mut input = String::new();
+                stdin().read_line(&mut input).unwrap();
+
+                let target_idx = input.trim().parse::<usize>();
+                if target_idx.is_err() {
+                    continue;
+                }
+                let target_idx = target_idx.unwrap();
+                if target_idx > self.public_playfield_state.p1_character_area.len() - 1 {
+                    println!("Invalid target.");
+                    continue;
+                }
+                self.send_action(PlayerAction::DiscardCharacter(target_idx))
+                    .await;
+
+                return;
+            },
         }
     }
 }
