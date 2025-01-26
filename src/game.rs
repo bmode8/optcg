@@ -674,7 +674,7 @@ impl PlayField {
                         return;
                     }
                     PlayerAction::MainPlayCard(c) => {
-                        let card = &current_player_area.player.hand[c];
+                        let card = current_player_area.player.hand.remove(c);
 
                         // Can you pay for it?
                         let cost = card.cost.0;
@@ -728,7 +728,7 @@ impl PlayField {
 
                                                         }
                                                         Effect::Draw(n) => {
-
+                                                            current_player_area.player.draw(n).unwrap();
                                                         }
                                                         Effect::GiveOtherCardPower(x) => {
 
@@ -833,11 +833,110 @@ impl PlayField {
                                     }
                                     _ => unreachable!(), // effects on event cards should be contained in a TimedEffect with Main timing.
                                 }
+
+                                // played and processed event card goes in the trash after.
+                                current_player_area.player.trash.push(card);
                             }
                             CardCategory::Stage => {}
-                            CardCategory::Character => {}
+                            CardCategory::Character => {
+                                // process any `OnPlay` effects.
+                                for effect in card.effects.iter() {
+                                    match effect {
+                                        Effect::TimedEffect(timing, effect_cost, effect) => {
+                                            match timing {
+                                                Timing::OnPlay => {
+                                                    match effect_cost {
+                                                        EffectCost::MinusDon(n) => {
+                                                            // are there enough don? if not, tell player and move on from activating the effect and add the card to character area.
+                                                            // if there are enough total don available, let player select `n` to put back in don deck or skip effect.
+                                                            // then put those cards back in the don deck.
+                                                            // continue to processing the effect. 
+                                                        }
+                                                        EffectCost::DonAttached(n) => unreachable!(),
+                                                        EffectCost::RestDon(n) => {
+                                                            // are there enough active don? if not, tell player and move on from activating the effect and add the card to character area.
+                                                            // prompt player for effect choice.
+                                                            // if they choose to activate the effect, rest `n` don cards. 
+                                                            // continue to processing the effect.
+                                                        }
+                                                        EffectCost::Zero => { } // the intended representation of no additional cost.
+                                                    }
+
+                                                    for e in effect.iter() {
+                                                        match e {
+                                                            Effect::Blocker => {}
+                                                            Effect::Draw(n) => {}
+                                                            Effect::GiveOtherCardPower(x) => {}
+                                                            Effect::GiveRestedDon(n) => {
+                                                                let rested_don_number = current_player_area.rested_don.len();
+                                                                let mut don_to_give = vec![];
+                                                                match rested_don_number {
+                                                                    0 => { continue }
+                                                                    1 => { don_to_give.push(current_player_area.rested_don.pop().unwrap()); } 
+                                                                    _ => { 
+                                                                        don_to_give.push(current_player_area.rested_don.pop().unwrap()); 
+                                                                        don_to_give.push(current_player_area.rested_don.pop().unwrap());
+                                                                    }
+                                                                }
+                                                                // prompt player for target in their own area.
+                                                                loop {
+                                                                    current_player_client.send_message(ServerMessage::QueryTargetSelfCharacterOrLeader).await;
+                                                                    let attempted_target = current_player_client.receive_next_nonidle_action().await;
+                                                                    match attempted_target {
+                                                                        PlayerAction::TargetSelfCharacterOrLeader(c) => {
+                                                                            match c {
+                                                                                'l' => { current_player_area.player.leader.attached_don.append(&mut don_to_give); break; }
+                                                                                _ => { 
+                                                                                    let char_idx = c.to_digit(10).unwrap() as usize;
+                                                                                    if char_idx > current_player_area.character.len() - 1 { 
+                                                                                        current_player_client.send_message(ServerMessage::InvalidTarget).await;
+                                                                                        continue;
+                                                                                    }
+                                                                                    current_player_area.character[char_idx].attached_don.append(&mut don_to_give);
+                                                                                    break;
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                        _ => { }
+                                                                    }
+                                                                }  
+                                                                // give those rested don cards to the target.
+                                                            }
+                                                            Effect::KnockOutWithPowerEqualOrLessThan(x) => {}
+                                                            Effect::OncePerTurn => {}
+                                                            Effect::OpponentNoBlocker(condition) => {}
+                                                            Effect::PlayCard => {}
+                                                            Effect::PlusPower(x) => {}
+                                                            Effect::PlusPowerForBattle(x) => {}
+                                                            Effect::Rush => {}
+                                                            _ => unreachable!(), // shouldn't have another TimedEffect inside the TimedEffect.
+                                                        }
+                                                    }
+                                                }
+                                                _ => {}
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                if current_player_area.character.len() < MAX_CHARACTER_AREA as usize {
+                                    current_player_client.send_message(ServerMessage::DiscardCharacter).await;
+                                    let discarded_character = current_player_client.receive_next_nonidle_action().await;
+                                    match discarded_character {
+                                        PlayerAction::DiscardCharacter(i) => {
+                                            let discarded_card = current_player_area.character.remove(i);
+                                            current_player_area.player.trash.push(discarded_card);
+                                        }
+                                        _ => unreachable!(),
+                                    }
+                                }
+                                current_player_area.character.push(card);
+                            }
                             _ => unreachable!(),
                         }
+                    }
+                    PlayerAction::MainActivateCardEffect(c) => {
+                        // oh god
                     }
                     _ => {
                         panic!("I don't know how to handle this action yet.")

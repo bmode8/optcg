@@ -60,12 +60,14 @@ pub enum PlayerAction {
     ReportDeck(String),
     TakeMulligan,
     NoAction,
-    MainActivateCardEffect(usize),
+    MainActivateCardEffect(char),
     MainPlayCard(usize),
     MainAttachDon(usize),
     MainBattle(usize),
     End,
     TargetOpposingCharacter(usize),
+    TargetSelfCharacterOrLeader(char),
+    DiscardCharacter(usize),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,7 +80,10 @@ pub enum ServerMessage {
     InsufficientDon,
     CannotPlayCounterEventDuringMainPhase,
     QueryTargetOpposingCharacter,
+    QueryTargetSelfCharacterOrLeader,
+    InvalidTarget,
     NoTargetsMeetConditions,
+    DiscardCharacter,
     PlayerDataPayload(Box<Player>),
     OtherPlayerDataPayload(Box<Player>),
     PublicPlayfieldStateDataPayload(Box<PublicPlayfieldState>),

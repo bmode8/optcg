@@ -112,6 +112,12 @@ impl<'stream> Client<'stream> {
                 ServerMessage::InsufficientDon => {
                     println!("Insufficient DON!! to play this card.");
                 }
+                ServerMessage::InvalidTarget => {
+                    println!("Invalid target.");
+                }
+                ServerMessage::DiscardCharacter => {
+                    return self.respond_to_discard_character().await;
+                }
                 ServerMessage::CannotPlayCounterEventDuringMainPhase => {
                     println!("Cannot play a counter event during the main phase.");
                 }
@@ -120,6 +126,9 @@ impl<'stream> Client<'stream> {
                 }
                 ServerMessage::QueryTargetOpposingCharacter => {
                     return self.respond_to_query_target_opposing_character().await;
+                }
+                ServerMessage::QueryTargetSelfCharacterOrLeader => {
+                    return self.respond_to_query_target_self_character_or_leader().await;
                 }
                 ServerMessage::PlayerDataPayload(player) => {
                     self.this_player = player;
@@ -198,6 +207,103 @@ impl<'stream> Client<'stream> {
         self.send_action(PlayerAction::TargetOpposingCharacter(target_idx))
             .await;
     }
+
+    pub async fn respond_to_query_target_self_character_or_leader(&mut self) {
+        println!("Select a Character to target:");
+        let target_idx: char;
+        match self.this_id {
+            Turn::P1 => {
+                for (i, character) in self
+                    .public_playfield_state
+                    .p1_character_area
+                    .iter()
+                    .enumerate()
+                {
+                    println!("{i}: {}", character);
+                }
+                println!("L: Leader {}", self.this_player.leader);
+                let mut input = String::new();
+                stdin().read_line(&mut input).unwrap();
+
+                target_idx = input.trim().to_lowercase().parse::<char>().unwrap();
+            }
+            Turn::P2 => {
+                for (i, character) in self
+                    .public_playfield_state
+                    .p2_character_area
+                    .iter()
+                    .enumerate()
+                {
+                    println!("{i}: {}", character);
+                }
+                println!("L: Leader {}", self.this_player.leader);
+                let mut input = String::new();
+                stdin().read_line(&mut input).unwrap();
+
+                target_idx = input.trim().to_lowercase().parse::<char>().unwrap();
+            }
+        }
+
+        self.send_action(PlayerAction::TargetSelfCharacterOrLeader(target_idx))
+            .await;
+    }
+
+    pub async fn respond_to_discard_character(&mut self) {
+        println!("Discard which character?");
+        match self.this_id {
+            Turn::P1 => {
+                loop {
+                    for (i, character) in self
+                        .public_playfield_state
+                        .p1_character_area
+                        .iter()
+                        .enumerate()
+                    {
+                        println!("{i}: {}", character);
+                    }
+                    let mut input = String::new();
+                    stdin().read_line(&mut input).unwrap();
+
+                    let target_idx = input.trim().parse::<usize>();
+                    if target_idx.is_err() { continue; }
+                    let target_idx = target_idx.unwrap();
+                    if target_idx > self.public_playfield_state.p1_character_area.len() - 1 {
+                        println!("Invalid target.");
+                        continue;
+                    }
+                    self.send_action(PlayerAction::DiscardCharacter(target_idx))
+                        .await;
+                    return;
+                }
+            }
+            Turn::P2 => {
+                loop {
+                    for (i, character) in self
+                        .public_playfield_state
+                        .p2_character_area
+                        .iter()
+                        .enumerate()
+                    {
+                        println!("{i}: {}", character);
+                    }
+                    let mut input = String::new();
+                    stdin().read_line(&mut input).unwrap();
+
+                    let target_idx = input.trim().parse::<usize>();
+                    if target_idx.is_err() { continue; }
+                    let target_idx = target_idx.unwrap();
+                    if target_idx > self.public_playfield_state.p1_character_area.len() - 1 {
+                        println!("Invalid target.");
+                        continue;
+                    }
+                    self.send_action(PlayerAction::DiscardCharacter(target_idx))
+                        .await;
+
+                    return;
+                }
+            }
+        }
+    }
 }
 
 fn parse_main_action(input: &str) -> PlayerAction {
@@ -221,11 +327,9 @@ fn parse_main_action(input: &str) -> PlayerAction {
             println!("board - Examine the current board state.");
             println!("examine <place> <card number> - Examine a card that is in your hand or face up on the board for its full text.");
             println!("play <card number> - Play a card from your hand.");
-            println!("activate <card number> - Activate a card effect on the board.");
-            println!("attach <card number> - Attach a DON!! card from your hand.");
-            println!(
-                "battle <card number> - Initiate a battle with a character from the board. 
-                      Your leader is represented by 'L' instead of a number."
+            println!("activate <card number, 'L', or 'S'> - Activate a card effect on the board.");
+            println!("attach <card number or 'L'> - Attach a DON!! card from the active DON!! area to your leader or a character in play.");
+            println!("battle <card number or 'L'> - Initiate a battle with your leader or an active character in play."
             );
             println!("end - End your turn.");
             println!();
@@ -241,6 +345,13 @@ fn parse_main_action(input: &str) -> PlayerAction {
             }
             let card_number = words[1].parse::<usize>().unwrap();
             MainPlayCard(card_number)
+        }
+        "activate" => {
+            if words.len() < 2 {
+                return NoAction;
+            }
+            let card_id = words[1].parse::<char>().unwrap();
+            MainActivateCardEffect(card_id)
         }
         _ => NoAction,
     }

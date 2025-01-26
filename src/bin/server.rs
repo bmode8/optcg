@@ -167,5 +167,9 @@ async fn execute_player_action(player_action: PlayerAction) -> std::io::Result<(
         TargetOpposingCharacter(_) => {
             panic!()
         }
+        TargetSelfCharacterOrLeader(_) => {
+            panic!()
+        }
+        _ => panic!(),
     }
 }
