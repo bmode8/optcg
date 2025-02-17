@@ -331,8 +331,7 @@ fn parse_main_action(input: &str) -> PlayerAction {
             println!("play <card number> - Play a card from your hand.");
             println!("activate <card number, 'L', or 'S'> - Activate a card effect on the board.");
             println!("attach <card number or 'L'> - Attach a DON!! card from the active DON!! area to your leader or a character in play.");
-            println!("battle <card number or 'L'> - Initiate a battle with your leader or an active character in play."
-            );
+            println!("battle <card number or 'L'> - Initiate a battle with your leader or an active character in play.");
             println!("end - End your turn.");
             println!();
             println!("Press enter to continue...");

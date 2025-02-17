@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use futures::prelude::*;
 use log::*;
 use rand::prelude::*;
@@ -8,7 +10,7 @@ use tokio_serde::formats::*;
 use tokio_serde::Framed;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-use super::{card::*, player::*, *};
+use super::{card::*, player::*, player_area::*, *};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Turn {
@@ -165,23 +167,7 @@ impl PublicPlayfieldState {
     }
 }
 
-pub struct PlayerArea<'a> {
-    pub player: &'a mut Player,
-    pub life: &'a mut Deck,
-    pub stage: &'a mut Deck,
-    pub character: &'a mut Deck,
-    pub rested_character: &'a mut Deck,
-    pub active_don: &'a mut Deck,
-    pub rested_don: &'a mut Deck,
-}
-
-impl PlayerArea<'_> {
-    pub fn process_knock_out(&mut self, i: usize) {
-        let card = self.character.remove(i);
-        self.player.trash.push(card);
-    }
-}
-
+#[derive(Debug, Copy, Clone)]
 pub struct TurnInfo {
     pub turn: Turn,
     pub turn_phase: TurnPhase,
@@ -189,6 +175,41 @@ pub struct TurnInfo {
 }
 
 impl PlayField {
+    async fn sync_data<'stream>(
+        current_player_client: &mut PlayerClient<'stream>,
+        other_player_client: &mut PlayerClient<'stream>,
+        current_player: &Box<Player>,
+        other_player: &Box<Player>,
+        public_field_state: PublicPlayfieldState,
+    ) {
+        current_player_client
+            .send_message(ServerMessage::PlayerDataPayload(current_player.clone()))
+            .await;
+        current_player_client
+            .send_message(ServerMessage::OtherPlayerDataPayload(
+                other_player.public_clone(),
+            ))
+            .await;
+        current_player_client
+            .send_message(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(
+                public_field_state.clone(),
+            )))
+            .await;
+        other_player_client
+            .send_message(ServerMessage::PlayerDataPayload(other_player.clone()))
+            .await;
+        other_player_client
+            .send_message(ServerMessage::OtherPlayerDataPayload(
+                current_player.public_clone(),
+            ))
+            .await;
+        other_player_client
+            .send_message(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(
+                public_field_state,
+            )))
+            .await;
+    }
+
     pub async fn setup<'stream>(
         mut player_1: Player,
         mut player_2: Player,
@@ -387,6 +408,50 @@ impl PlayField {
         }
     }
 
+    pub fn public_playfield_state(
+        turn_info: TurnInfo,
+        current_player_area: &PlayerArea,
+        other_player_area: &PlayerArea,
+    ) -> PublicPlayfieldState {
+        let public_state;
+        match turn_info.turn {
+            Turn::P1 => {
+                public_state = PublicPlayfieldState::new(
+                    current_player_area.life.clone(),
+                    other_player_area.life.clone(),
+                    current_player_area.stage.clone(),
+                    other_player_area.stage.clone(),
+                    current_player_area.character.clone(),
+                    other_player_area.character.clone(),
+                    current_player_area.rested_character.clone(),
+                    other_player_area.rested_character.clone(),
+                    current_player_area.active_don.clone(),
+                    other_player_area.active_don.clone(),
+                    current_player_area.rested_don.clone(),
+                    other_player_area.rested_don.clone(),
+                );
+            }
+            Turn::P2 => {
+                public_state = PublicPlayfieldState::new(
+                    other_player_area.life.clone(),
+                    current_player_area.life.clone(),
+                    other_player_area.stage.clone(),
+                    current_player_area.stage.clone(),
+                    other_player_area.character.clone(),
+                    current_player_area.character.clone(),
+                    other_player_area.rested_character.clone(),
+                    current_player_area.rested_character.clone(),
+                    other_player_area.active_don.clone(),
+                    current_player_area.active_don.clone(),
+                    other_player_area.rested_don.clone(),
+                    current_player_area.rested_don.clone(),
+                );
+            }
+        };
+
+        public_state
+    }
+
     pub async fn step<'stream>(
         &mut self,
         p1_client: &mut PlayerClient<'stream>,
@@ -396,559 +461,59 @@ impl PlayField {
 
         debug!("{:?}, {:?}, {:?}", self.turn, self.turn_phase, self.turn_n);
 
-        let (mut current_player_area, mut other_player_area, turn_info) =
+        let (mut current_player_area, mut other_player_area, turn_info) = 
             self.split_into_player_areas();
 
-        let (current_player_client, other_player_client) = match turn_info.turn {
+        let (mut current_player_client, mut other_player_client) = match turn_info.turn {
             Turn::P1 => (p1_client, p2_client),
             Turn::P2 => (p2_client, p1_client),
         };
 
-        async fn send_updates<'stream>(
-            current_player_client: &mut PlayerClient<'stream>,
-            other_player_client: &mut PlayerClient<'stream>,
-            current_player: &Box<Player>,
-            other_player: &Box<Player>,
-            public_field_state: PublicPlayfieldState,
-        ) {
-            current_player_client
-                .send_message(ServerMessage::PlayerDataPayload(current_player.clone()))
-                .await;
-            current_player_client
-                .send_message(ServerMessage::OtherPlayerDataPayload(
-                    other_player.public_clone(),
-                ))
-                .await;
-            current_player_client
-                .send_message(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(
-                    public_field_state.clone(),
-                )))
-                .await;
-            other_player_client
-                .send_message(ServerMessage::PlayerDataPayload(other_player.clone()))
-                .await;
-            other_player_client
-                .send_message(ServerMessage::OtherPlayerDataPayload(
-                    current_player.public_clone(),
-                ))
-                .await;
-            other_player_client
-                .send_message(ServerMessage::PublicPlayfieldStateDataPayload(Box::new(
-                    public_field_state,
-                )))
-                .await;
-        }
-
         // Behold! A state machine!
         match turn_info.turn_phase {
             Refresh => {
-                debug!("(TURN) [REFRESH]");
-                current_player_area
-                    .active_don
-                    .append(current_player_area.rested_don);
-                current_player_area
-                    .character
-                    .append(current_player_area.rested_character);
-                for card in current_player_area.character.iter_mut() {
-                    current_player_area
-                        .active_don
-                        .append(&mut card.attached_don);
-                }
-
-                let public_state;
-                match turn_info.turn {
-                    Turn::P1 => {
-                        public_state = PublicPlayfieldState::new(
-                            current_player_area.life.clone(),
-                            other_player_area.life.clone(),
-                            current_player_area.stage.clone(),
-                            other_player_area.stage.clone(),
-                            current_player_area.character.clone(),
-                            other_player_area.character.clone(),
-                            current_player_area.rested_character.clone(),
-                            other_player_area.rested_character.clone(),
-                            current_player_area.active_don.clone(),
-                            other_player_area.active_don.clone(),
-                            current_player_area.rested_don.clone(),
-                            other_player_area.rested_don.clone(),
-                        );
-                    }
-                    Turn::P2 => {
-                        public_state = PublicPlayfieldState::new(
-                            other_player_area.life.clone(),
-                            current_player_area.life.clone(),
-                            other_player_area.stage.clone(),
-                            current_player_area.stage.clone(),
-                            other_player_area.character.clone(),
-                            current_player_area.character.clone(),
-                            other_player_area.rested_character.clone(),
-                            current_player_area.rested_character.clone(),
-                            other_player_area.active_don.clone(),
-                            current_player_area.active_don.clone(),
-                            other_player_area.rested_don.clone(),
-                            current_player_area.rested_don.clone(),
-                        );
-                    }
-                };
-
-                send_updates(
-                    current_player_client,
-                    other_player_client,
-                    &Box::new(current_player_area.player.clone()),
-                    &Box::new(other_player_area.player.clone()),
-                    public_state,
+                Self::refresh_step(
+                    &mut current_player_area,
+                    &mut other_player_area,
+                    &mut current_player_client,
+                    &mut other_player_client,
+                    turn_info,
                 )
                 .await;
 
                 self.turn_phase = Draw;
             }
             Draw => {
-                debug!("(TURN) [DRAW]");
-                let res = current_player_area.player.draw(1);
-                match res {
-                    Ok(()) => {}
-                    Err(()) => {
-                        return;
-                    }
-                }
-
-                let public_state;
-                match turn_info.turn {
-                    Turn::P1 => {
-                        public_state = PublicPlayfieldState::new(
-                            current_player_area.life.clone(),
-                            other_player_area.life.clone(),
-                            current_player_area.stage.clone(),
-                            other_player_area.stage.clone(),
-                            current_player_area.character.clone(),
-                            other_player_area.character.clone(),
-                            current_player_area.rested_character.clone(),
-                            other_player_area.rested_character.clone(),
-                            current_player_area.active_don.clone(),
-                            other_player_area.active_don.clone(),
-                            current_player_area.rested_don.clone(),
-                            other_player_area.rested_don.clone(),
-                        );
-                    }
-                    Turn::P2 => {
-                        public_state = PublicPlayfieldState::new(
-                            other_player_area.life.clone(),
-                            current_player_area.life.clone(),
-                            other_player_area.stage.clone(),
-                            current_player_area.stage.clone(),
-                            other_player_area.character.clone(),
-                            current_player_area.character.clone(),
-                            other_player_area.rested_character.clone(),
-                            current_player_area.rested_character.clone(),
-                            other_player_area.active_don.clone(),
-                            current_player_area.active_don.clone(),
-                            other_player_area.rested_don.clone(),
-                            current_player_area.rested_don.clone(),
-                        );
-                    }
-                };
-
-                send_updates(
-                    current_player_client,
-                    other_player_client,
-                    &Box::new(current_player_area.player.clone()),
-                    &Box::new(other_player_area.player.clone()),
-                    public_state,
+                Self::draw_step(
+                    &mut current_player_area,
+                    &mut other_player_area,
+                    &mut current_player_client,
+                    &mut other_player_client,
+                    turn_info,
                 )
                 .await;
                 self.turn_phase = Don;
             }
             Don => {
-                debug!("(TURN) [DON]");
-                let mut drawn_don = current_player_area.player.draw_don(2);
-                current_player_area.active_don.append(&mut drawn_don);
-
-                let public_state;
-                match turn_info.turn {
-                    Turn::P1 => {
-                        public_state = PublicPlayfieldState::new(
-                            current_player_area.life.clone(),
-                            other_player_area.life.clone(),
-                            current_player_area.stage.clone(),
-                            other_player_area.stage.clone(),
-                            current_player_area.character.clone(),
-                            other_player_area.character.clone(),
-                            current_player_area.rested_character.clone(),
-                            other_player_area.rested_character.clone(),
-                            current_player_area.active_don.clone(),
-                            other_player_area.active_don.clone(),
-                            current_player_area.rested_don.clone(),
-                            other_player_area.rested_don.clone(),
-                        );
-                    }
-                    Turn::P2 => {
-                        public_state = PublicPlayfieldState::new(
-                            other_player_area.life.clone(),
-                            current_player_area.life.clone(),
-                            other_player_area.stage.clone(),
-                            current_player_area.stage.clone(),
-                            other_player_area.character.clone(),
-                            current_player_area.character.clone(),
-                            other_player_area.rested_character.clone(),
-                            current_player_area.rested_character.clone(),
-                            other_player_area.active_don.clone(),
-                            current_player_area.active_don.clone(),
-                            other_player_area.rested_don.clone(),
-                            current_player_area.rested_don.clone(),
-                        );
-                    }
-                };
-
-                send_updates(
-                    current_player_client,
-                    other_player_client,
-                    &Box::new(current_player_area.player.clone()),
-                    &Box::new(other_player_area.player.clone()),
-                    public_state,
+                Self::don_step(
+                    &mut current_player_area,
+                    &mut other_player_area,
+                    &mut current_player_client,
+                    &mut other_player_client,
+                    turn_info,
                 )
                 .await;
-
                 self.turn_phase = Main;
             }
             Main => {
-                debug!("(TURN) [MAIN]");
-
-                let public_state;
-                match turn_info.turn {
-                    Turn::P1 => {
-                        public_state = PublicPlayfieldState::new(
-                            current_player_area.life.clone(),
-                            other_player_area.life.clone(),
-                            current_player_area.stage.clone(),
-                            other_player_area.stage.clone(),
-                            current_player_area.character.clone(),
-                            other_player_area.character.clone(),
-                            current_player_area.rested_character.clone(),
-                            other_player_area.rested_character.clone(),
-                            current_player_area.active_don.clone(),
-                            other_player_area.active_don.clone(),
-                            current_player_area.rested_don.clone(),
-                            other_player_area.rested_don.clone(),
-                        );
-                    }
-                    Turn::P2 => {
-                        public_state = PublicPlayfieldState::new(
-                            other_player_area.life.clone(),
-                            current_player_area.life.clone(),
-                            other_player_area.stage.clone(),
-                            current_player_area.stage.clone(),
-                            other_player_area.character.clone(),
-                            current_player_area.character.clone(),
-                            other_player_area.rested_character.clone(),
-                            current_player_area.rested_character.clone(),
-                            other_player_area.active_don.clone(),
-                            current_player_area.active_don.clone(),
-                            other_player_area.rested_don.clone(),
-                            current_player_area.rested_don.clone(),
-                        );
-                    }
-                };
-
-                send_updates(
-                    current_player_client,
-                    other_player_client,
-                    &Box::new(current_player_area.player.clone()),
-                    &Box::new(other_player_area.player.clone()),
-                    public_state,
+                self.turn_phase = Self::main_step(
+                    &mut current_player_area,
+                    &mut other_player_area,
+                    &mut current_player_client,
+                    &mut other_player_client,
+                    turn_info,
                 )
                 .await;
-
-                debug!(
-                    "Sending {:?} to {}",
-                    ServerMessage::TakeMainAction,
-                    current_player_area.player.name
-                );
-                current_player_client
-                    .send_message(ServerMessage::TakeMainAction)
-                    .await;
-                let player_action = current_player_client.receive_next_nonidle_action().await;
-                debug!("Received {:?}", player_action);
-                match player_action {
-                    PlayerAction::End => {
-                        self.turn_phase = End;
-                        return;
-                    }
-                    PlayerAction::MainPlayCard(c) => {
-                        let card = current_player_area.player.hand.remove(c);
-
-                        // Can you pay for it?
-                        let cost = card.cost.0;
-                        if cost as usize > current_player_area.active_don.len() {
-                            current_player_client
-                                .send_message(ServerMessage::InsufficientDon)
-                                .await;
-                            return;
-                        }
-
-                        // Is it an Event card with Counter Timing?
-                        match card.category {
-                            CardCategory::Event => {
-                                match card.effects.iter().take(1).next().unwrap() {
-                                    Effect::TimedEffect(timing, _, _) => {
-                                        match timing {
-                                            Timing::Main => {} // fine
-                                            Timing::Counter => {
-                                                current_player_client.send_message(ServerMessage::CannotPlayCounterEventDuringMainPhase).await;
-                                                return;
-                                            }
-                                            _ => {} // also fine
-                                        }
-                                    }
-                                    _ => unreachable!(), // not something that should happen.
-                                }
-                            }
-                            _ => {} // not an event card.
-                        }
-
-                        // Pay for it if it isn't free.
-                        if cost > 0 {
-                            let mut don_to_pay = vec![];
-                            for _ in 0..cost {
-                                don_to_pay.push(current_player_area.active_don.pop().unwrap());
-                            }
-                            current_player_area.rested_don.append(&mut don_to_pay);
-                        }
-
-                        match card.category {
-                            // already made sure this can be played now.
-                            CardCategory::Event => {
-                                let main_effect = card.effects.iter().next().unwrap();
-                                match main_effect {
-                                    Effect::TimedEffect(timing, effect_cost, effect) => {
-                                        match timing {
-                                            Timing::Main => {
-                                                for effect in effect.iter() {
-                                                    match *effect {
-                                                        Effect::Blocker => {
-
-                                                        }
-                                                        Effect::Draw(n) => {
-                                                            current_player_area.player.draw(n).unwrap();
-                                                        }
-                                                        Effect::GiveOtherCardPower(x) => {
-
-                                                        }
-                                                        Effect::GiveRestedDon(n) => {
-
-                                                        }
-                                                        Effect::KnockOutWithPowerEqualOrLessThan(x) => {
-                                                            // are there any valid targets on the field?
-                                                            if other_player_area.character.iter().filter(|c| c.power.unwrap().0 <= x).count() == 0 {
-                                                                current_player_client.send_message(ServerMessage::NoTargetsMeetConditions).await;
-                                                                continue;
-                                                            }
-
-                                                            loop {
-                                                                // ask player to select an opponent's character with power less than x to knock out.
-                                                                current_player_client.send_message(ServerMessage::QueryTargetOpposingCharacter).await;
-                                                                let attempted_target = current_player_client.receive_next_nonidle_action().await;
-                                                                match attempted_target {
-                                                                    PlayerAction::TargetOpposingCharacter(i) => {
-                                                                        // if they select one that is too powerful, loop back.
-                                                                        if other_player_area.character[i].power.unwrap().0 < x {
-                                                                            continue;
-                                                                        }
-
-                                                                        other_player_area.process_knock_out(i);
-
-                                                                        let public_state;
-                                                                        match turn_info.turn {
-                                                                            Turn::P1 => {
-                                                                                public_state = PublicPlayfieldState::new(
-                                                                                    current_player_area.life.clone(),
-                                                                                    other_player_area.life.clone(),
-                                                                                    current_player_area.stage.clone(),
-                                                                                    other_player_area.stage.clone(),
-                                                                                    current_player_area.character.clone(),
-                                                                                    other_player_area.character.clone(),
-                                                                                    current_player_area.rested_character.clone(),
-                                                                                    other_player_area.rested_character.clone(),
-                                                                                    current_player_area.active_don.clone(),
-                                                                                    other_player_area.active_don.clone(),
-                                                                                    current_player_area.rested_don.clone(),
-                                                                                    other_player_area.rested_don.clone(),
-                                                                                );
-                                                                            }
-                                                                            Turn::P2 => {
-                                                                                public_state = PublicPlayfieldState::new(
-                                                                                    other_player_area.life.clone(),
-                                                                                    current_player_area.life.clone(),
-                                                                                    other_player_area.stage.clone(),
-                                                                                    current_player_area.stage.clone(),
-                                                                                    other_player_area.character.clone(),
-                                                                                    current_player_area.character.clone(),
-                                                                                    other_player_area.rested_character.clone(),
-                                                                                    current_player_area.rested_character.clone(),
-                                                                                    other_player_area.active_don.clone(),
-                                                                                    current_player_area.active_don.clone(),
-                                                                                    other_player_area.rested_don.clone(),
-                                                                                    current_player_area.rested_don.clone(),
-                                                                                );
-                                                                            }
-                                                                        };
-
-                                                                        send_updates(
-                                                                            current_player_client,
-                                                                            other_player_client,
-                                                                            &Box::new(current_player_area.player.clone()),
-                                                                            &Box::new(other_player_area.player.clone()),
-                                                                            public_state,
-                                                                        )
-                                                                        .await;
-                                                                    },
-                                                                    _ => { }
-                                                                }
-                                                            }
-                                                            // process the knock out.
-                                                        }
-                                                        Effect::OncePerTurn => {
-
-                                                        }
-                                                        Effect::OpponentNoBlocker(condition) => {
-
-                                                        }
-                                                        Effect::PlayCard => {
-
-                                                        }
-                                                        Effect::PlusPower(x) => {
-
-                                                        }
-                                                        Effect::PlusPowerForBattle(x) => {
-
-                                                        }
-                                                        Effect::Rush => {
-
-                                                        }
-                                                        _ => unreachable!(), // shouldn't have another TimedEffect inside the TimedEffect.
-                                                    }
-                                                }
-                                            }
-                                            _ => unreachable!(), // we've accounted for all other possibilities here.
-                                        }
-                                    }
-                                    _ => unreachable!(), // effects on event cards should be contained in a TimedEffect with Main timing.
-                                }
-
-                                // played and processed event card goes in the trash after.
-                                current_player_area.player.trash.push(card);
-                            }
-                            CardCategory::Stage => {}
-                            CardCategory::Character => {
-                                // process any `OnPlay` effects.
-                                for effect in card.effects.iter() {
-                                    match effect {
-                                        Effect::TimedEffect(timing, effect_cost, effect) => {
-                                            match timing {
-                                                Timing::OnPlay => {
-                                                    match effect_cost {
-                                                        EffectCost::MinusDon(n) => {
-                                                            // are there enough don? if not, tell player and move on from activating the effect and add the card to character area.
-                                                            // if there are enough total don available, let player select `n` to put back in don deck or skip effect.
-                                                            // then put those cards back in the don deck.
-                                                            // continue to processing the effect.
-                                                        }
-                                                        EffectCost::DonAttached(n) => {
-                                                            unreachable!()
-                                                        }
-                                                        EffectCost::RestDon(n) => {
-                                                            // are there enough active don? if not, tell player and move on from activating the effect and add the card to character area.
-                                                            // prompt player for effect choice.
-                                                            // if they choose to activate the effect, rest `n` don cards.
-                                                            // continue to processing the effect.
-                                                        }
-                                                        EffectCost::Zero => {} // the intended representation of no additional cost.
-                                                    }
-
-                                                    for e in effect.iter() {
-                                                        match e {
-                                                            Effect::Blocker => {}
-                                                            Effect::Draw(n) => {}
-                                                            Effect::GiveOtherCardPower(x) => {}
-                                                            Effect::GiveRestedDon(n) => {
-                                                                let rested_don_number = current_player_area.rested_don.len();
-                                                                let mut don_to_give = vec![];
-                                                                match rested_don_number {
-                                                                    0 => { continue }
-                                                                    1 => { don_to_give.push(current_player_area.rested_don.pop().unwrap()); }
-                                                                    _ => {
-                                                                        don_to_give.push(current_player_area.rested_don.pop().unwrap());
-                                                                        don_to_give.push(current_player_area.rested_don.pop().unwrap());
-                                                                    }
-                                                                }
-                                                                // prompt player for target in their own area.
-                                                                loop {
-                                                                    current_player_client.send_message(ServerMessage::QueryTargetSelfCharacterOrLeader).await;
-                                                                    let attempted_target = current_player_client.receive_next_nonidle_action().await;
-                                                                    match attempted_target {
-                                                                        PlayerAction::TargetSelfCharacterOrLeader(c) => {
-                                                                            match c {
-                                                                                'l' => { current_player_area.player.leader.attached_don.append(&mut don_to_give); break; }
-                                                                                _ => {
-                                                                                    let char_idx = c.to_digit(10).unwrap() as usize;
-                                                                                    if char_idx > current_player_area.character.len() - 1 {
-                                                                                        current_player_client.send_message(ServerMessage::InvalidTarget).await;
-                                                                                        continue;
-                                                                                    }
-                                                                                    current_player_area.character[char_idx].attached_don.append(&mut don_to_give);
-                                                                                    break;
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                        _ => { }
-                                                                    }
-                                                                }
-                                                                // give those rested don cards to the target.
-                                                            }
-                                                            Effect::KnockOutWithPowerEqualOrLessThan(x) => {}
-                                                            Effect::OncePerTurn => {}
-                                                            Effect::OpponentNoBlocker(condition) => {}
-                                                            Effect::PlayCard => {}
-                                                            Effect::PlusPower(x) => {}
-                                                            Effect::PlusPowerForBattle(x) => {}
-                                                            Effect::Rush => {}
-                                                            _ => unreachable!(), // shouldn't have another TimedEffect inside the TimedEffect.
-                                                        }
-                                                    }
-                                                }
-                                                _ => {}
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                if current_player_area.character.len() < MAX_CHARACTER_AREA as usize
-                                {
-                                    current_player_client
-                                        .send_message(ServerMessage::DiscardCharacter)
-                                        .await;
-                                    let discarded_character =
-                                        current_player_client.receive_next_nonidle_action().await;
-                                    match discarded_character {
-                                        PlayerAction::DiscardCharacter(i) => {
-                                            let discarded_card =
-                                                current_player_area.character.remove(i);
-                                            current_player_area.player.trash.push(discarded_card);
-                                        }
-                                        _ => unreachable!(),
-                                    }
-                                }
-                                current_player_area.character.push(card);
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                    PlayerAction::MainActivateCardEffect(c) => {
-                        // oh god
-                    }
-                    _ => {
-                        panic!("I don't know how to handle this action yet.")
-                    }
-                }
             }
             BattleAttackStep => {}
             BattleBlockStep => {}
@@ -966,6 +531,404 @@ impl PlayField {
             }
         }
     }
+
+    pub async fn refresh_step<'stream>(
+        current_player_area: &mut PlayerArea<'_>,
+        other_player_area: &mut PlayerArea<'_>,
+        current_player_client: &mut PlayerClient<'stream>,
+        other_player_client: &mut PlayerClient<'stream>,
+        turn_info: TurnInfo,
+    ) {
+        debug!("(TURN) [REFRESH]");
+        current_player_area
+            .active_don
+            .append(current_player_area.rested_don);
+        current_player_area
+            .character
+            .append(current_player_area.rested_character);
+        for card in current_player_area.character.iter_mut() {
+            current_player_area
+                .active_don
+                .append(&mut card.attached_don);
+        }
+
+        let public_state =
+            Self::public_playfield_state(turn_info, &current_player_area, &other_player_area);
+
+        Self::sync_data(
+            current_player_client,
+            other_player_client,
+            &Box::new(current_player_area.player.clone()),
+            &Box::new(other_player_area.player.clone()),
+            public_state,
+        )
+        .await;
+    }
+
+    pub async fn draw_step<'stream>(
+        current_player_area: &mut PlayerArea<'_>,
+        other_player_area: &mut PlayerArea<'_>,
+        current_player_client: &mut PlayerClient<'stream>,
+        other_player_client: &mut PlayerClient<'stream>,
+        turn_info: TurnInfo,
+    ) {
+        debug!("(TURN) [DRAW]");
+        let res = current_player_area.player.draw(1);
+        match res {
+            Ok(()) => {}
+            Err(()) => {
+                return;
+            }
+        }
+
+        let public_state =
+            Self::public_playfield_state(turn_info, &current_player_area, &other_player_area);
+
+        Self::sync_data(
+            current_player_client,
+            other_player_client,
+            &Box::new(current_player_area.player.clone()),
+            &Box::new(other_player_area.player.clone()),
+            public_state,
+        )
+        .await;
+    }
+
+    pub async fn don_step<'stream>(
+        current_player_area: &mut PlayerArea<'_>,
+        other_player_area: &mut PlayerArea<'_>,
+        current_player_client: &mut PlayerClient<'stream>,
+        other_player_client: &mut PlayerClient<'stream>,
+        turn_info: TurnInfo,
+    ) {
+        debug!("(TURN) [DON]");
+        let mut drawn_don = current_player_area.player.draw_don(2);
+        current_player_area.active_don.append(&mut drawn_don);
+
+        let public_state = Self::public_playfield_state(
+            turn_info,
+            &current_player_area,
+            &other_player_area,
+        );
+
+        Self::sync_data(
+            current_player_client,
+            other_player_client,
+            &Box::new(current_player_area.player.clone()),
+            &Box::new(other_player_area.player.clone()),
+            public_state,
+        )
+        .await;
+    }
+
+    pub async fn main_step<'stream>(
+        current_player_area: &mut PlayerArea<'_>,
+        other_player_area: &mut PlayerArea<'_>,
+        current_player_client: &mut PlayerClient<'stream>,
+        other_player_client: &mut PlayerClient<'stream>,
+        turn_info: TurnInfo,
+    ) -> TurnPhase {
+        debug!("(TURN) [MAIN]");
+
+        let public_state = Self::public_playfield_state(
+            turn_info,
+            &current_player_area,
+            &other_player_area,
+        );
+
+        Self::sync_data(
+            current_player_client,
+            other_player_client,
+            &Box::new(current_player_area.player.clone()),
+            &Box::new(other_player_area.player.clone()),
+            public_state,
+        )
+        .await;
+
+        debug!(
+            "Sending {:?} to {}",
+            ServerMessage::TakeMainAction,
+            current_player_area.player.name
+        );
+        current_player_client
+            .send_message(ServerMessage::TakeMainAction)
+            .await;
+        let player_action = current_player_client.receive_next_nonidle_action().await;
+        debug!("Received {:?}", player_action);
+        match player_action {
+            PlayerAction::End => {
+                return TurnPhase::End;
+            }
+            PlayerAction::MainPlayCard(c) => {
+                let card = current_player_area.player.hand.remove(c);
+
+                // Can you pay for it?
+                let cost = card.cost.0;
+                if cost as usize > current_player_area.active_don.len() {
+                    current_player_client
+                        .send_message(ServerMessage::InsufficientDon)
+                        .await;
+                    return TurnPhase::Main;
+                }
+
+                // Is it an Event card with Counter Timing?
+                match card.category {
+                    CardCategory::Event => {
+                        match card.effects.iter().take(1).next().unwrap() {
+                            Effect::TimedEffect(timing, _, _) => {
+                                match timing {
+                                    Timing::Main => {} // fine
+                                    Timing::Counter => {
+                                        current_player_client.send_message(ServerMessage::CannotPlayCounterEventDuringMainPhase).await;
+                                        return TurnPhase::Main;
+                                    }
+                                    _ => {} // also fine
+                                }
+                            }
+                            _ => unreachable!(), // not something that should happen.
+                        }
+                    }
+                    _ => {} // not an event card.
+                }
+
+                // Pay for it if it isn't free.
+                if cost > 0 {
+                    let mut don_to_pay = vec![];
+                    for _ in 0..cost {
+                        don_to_pay.push(current_player_area.active_don.pop().unwrap());
+                    }
+                    current_player_area.rested_don.append(&mut don_to_pay);
+                }
+
+                match card.category {
+                    // already made sure this can be played now.
+                    CardCategory::Event => {
+                        let main_effect = card.effects.iter().next().unwrap();
+                        match main_effect {
+                            Effect::TimedEffect(timing, effect_cost, effect) => {
+                                match timing {
+                                    Timing::Main => {
+                                        for effect in effect.iter() {
+                                            match *effect {
+                                                Effect::Blocker => {
+
+                                                }
+                                                Effect::Draw(n) => {
+                                                    current_player_area.player.draw(n).unwrap();
+                                                }
+                                                Effect::GiveOtherCardPower(x) => {
+
+                                                }
+                                                Effect::GiveRestedDon(n) => {
+
+                                                }
+                                                Effect::KnockOutWithPowerEqualOrLessThan(x) => {
+                                                    // are there any valid targets on the field?
+                                                    if other_player_area.character.iter().filter(|c| c.power.unwrap().0 <= x).count() == 0 {
+                                                        current_player_client.send_message(ServerMessage::NoTargetsMeetConditions).await;
+                                                        continue;
+                                                    }
+
+                                                    loop {
+                                                        // ask player to select an opponent's character with power less than x to knock out.
+                                                        current_player_client.send_message(ServerMessage::QueryTargetOpposingCharacter).await;
+                                                        let attempted_target = current_player_client.receive_next_nonidle_action().await;
+                                                        match attempted_target {
+                                                            PlayerAction::TargetOpposingCharacter(i) => {
+                                                                // if they select one that is too powerful, loop back.
+                                                                if other_player_area.character[i].power.unwrap().0 < x {
+                                                                    continue;
+                                                                }
+
+                                                                other_player_area.process_knock_out(i);
+
+                                                                let public_state = Self::public_playfield_state(turn_info, &current_player_area, &other_player_area);
+
+                                                                Self::sync_data(
+                                                                    current_player_client,
+                                                                    other_player_client,
+                                                                    &Box::new(current_player_area.player.clone()),
+                                                                    &Box::new(other_player_area.player.clone()),
+                                                                    public_state,
+                                                                )
+                                                                .await;
+                                                            },
+                                                            _ => { }
+                                                        }
+                                                    }
+                                                    // process the knock out.
+                                                }
+                                                Effect::OncePerTurn => {
+
+                                                }
+                                                Effect::OpponentNoBlocker(condition) => {
+
+                                                }
+                                                Effect::PlayCard => {
+
+                                                }
+                                                Effect::PlusPower(x) => {
+
+                                                }
+                                                Effect::PlusPowerForBattle(x) => {
+
+                                                }
+                                                Effect::Rush => {
+
+                                                }
+                                                _ => unreachable!(), // shouldn't have another TimedEffect inside the TimedEffect.
+                                            }
+                                        }
+                                    }
+                                    _ => unreachable!(), // we've accounted for all other possibilities here.
+                                }
+                            }
+                            _ => unreachable!(), // effects on event cards should be contained in a TimedEffect with Main timing.
+                        }
+
+                        // played and processed event card goes in the trash after.
+                        current_player_area.player.trash.push(card);
+                    }
+                    CardCategory::Stage => {}
+                    CardCategory::Character => {
+                        // process any `OnPlay` effects.
+                        for effect in card.effects.iter() {
+                            match effect {
+                                Effect::TimedEffect(timing, effect_cost, effect) => {
+                                    match timing {
+                                        Timing::OnPlay => {
+                                            // can you pay for it? board updated to reflect payment in this match.
+                                            match effect_cost {
+                                                EffectCost::MinusDon(n) => {
+                                                    // are there enough don? if not, tell player and move on from activating the effect and add the card to character area.
+                                                    let num_don_in_play = current_player_area.count_don_in_play();
+                                                    if num_don_in_play < *n {
+                                                        current_player_client.send_message(ServerMessage::InsufficientDon).await;
+                                                        continue;
+                                                    }
+                                                    // if there are enough total don available, let player select `n` to put back in don deck or skip effect.
+                                                        // how to do this? query player for `n` targets, make client package them up and send them here.
+                                                        // maybe just a special enum for the vec of locations to take the don!! from, like Leader, C1, etc., C5, Rested, Active
+                                                    // then put those cards back in the don deck.
+                                                    // continue to processing the effect.
+                                                }
+                                                EffectCost::DonAttached(n) => {
+                                                    unreachable!()
+                                                }
+                                                EffectCost::RestDon(n) => {
+                                                    // are there enough active don? if not, tell player and move on from activating the effect and add the card to character area.
+                                                    // prompt player for effect choice.
+                                                    // if they choose to activate the effect, rest `n` don cards.
+                                                    // continue to processing the effect.
+                                                }
+                                                EffectCost::Zero => {} // the intended representation of no additional cost.
+                                            }
+
+                                            for e in effect.iter() {
+                                                match e {
+                                                    Effect::Blocker => {}
+                                                    Effect::Draw(n) => {}
+                                                    Effect::GiveOtherCardPower(x) => {}
+                                                    Effect::GiveRestedDon(n) => {
+                                                        let rested_don_number = current_player_area.rested_don.len();
+                                                        let mut don_to_give = vec![];
+                                                        match rested_don_number {
+                                                            0 => { continue }
+                                                            1 => { don_to_give.push(current_player_area.rested_don.pop().unwrap()); }
+                                                            _ => {
+                                                                don_to_give.push(current_player_area.rested_don.pop().unwrap());
+                                                                don_to_give.push(current_player_area.rested_don.pop().unwrap());
+                                                            }
+                                                        }
+                                                        // prompt player for target in their own area.
+                                                        loop {
+                                                            current_player_client.send_message(ServerMessage::QueryTargetSelfCharacterOrLeader).await;
+                                                            let attempted_target = current_player_client.receive_next_nonidle_action().await;
+                                                            match attempted_target {
+                                                                PlayerAction::TargetSelfCharacterOrLeader(c) => {
+                                                                    match c {
+                                                                        'l' => { current_player_area.player.leader.attached_don.append(&mut don_to_give); break; }
+                                                                        _ => {
+                                                                            let char_idx = c.to_digit(10).unwrap() as usize;
+                                                                            if char_idx > current_player_area.character.len() - 1 {
+                                                                                current_player_client.send_message(ServerMessage::InvalidTarget).await;
+                                                                                continue;
+                                                                            }
+                                                                            current_player_area.character[char_idx].attached_don.append(&mut don_to_give);
+                                                                            break;
+                                                                        }
+                                                                    }
+                                                                }
+                                                                _ => { }
+                                                            }
+                                                        }
+                                                        // give those rested don cards to the target.
+                                                    }
+                                                    Effect::KnockOutWithPowerEqualOrLessThan(x) => {}
+                                                    Effect::OncePerTurn => {}
+                                                    Effect::OpponentNoBlocker(condition) => {}
+                                                    Effect::PlayCard => {}
+                                                    Effect::PlusPower(x) => {}
+                                                    Effect::PlusPowerForBattle(x) => {}
+                                                    Effect::Rush => {}
+                                                    _ => unreachable!(), // shouldn't have another TimedEffect inside the TimedEffect.
+                                                }
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                        if current_player_area.character.len()
+                            == MAX_CHARACTER_AREA as usize
+                        {
+                            current_player_client
+                                .send_message(ServerMessage::DiscardCharacter)
+                                .await;
+                            let discarded_character =
+                                current_player_client.receive_next_nonidle_action().await;
+                            match discarded_character {
+                                PlayerAction::DiscardCharacter(i) => {
+                                    let discarded_card =
+                                        current_player_area.character.remove(i);
+                                    current_player_area.player.trash.push(discarded_card);
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        current_player_area.character.push(card);
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            PlayerAction::MainActivateCardEffect(c) => {
+                // first, are we activating the leader or a character card?
+                // then, can you pay for it?
+            }
+            PlayerAction::NoAction => {
+                return TurnPhase::Main;
+            }
+            _ => {
+                panic!("I don't know how to handle this action yet.")
+            }
+        }
+
+        TurnPhase::Main
+    }
+
+    pub async fn battle_attack_step() {}
+
+    pub async fn battle_block_step() {}
+
+    pub async fn battle_counter_step() {}
+
+    pub async fn battle_damage_step() {}
+
+    pub async fn battle_end() {}
+
+    pub async fn end_step() {}
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

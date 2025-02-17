@@ -21,7 +21,7 @@
         "Zero",
         [
           {
-            "KnockOutWithPowerLessThan": 6000
+            "KnockOutWithPowerEqualOrLessThan": 6000
           }
         ]
       ]
@@ -32,7 +32,7 @@
         "Zero",
         [
           {
-            "KnockOutWithPowerLessThan": 6000
+            "KnockOutWithPowerEqualOrLessThan": 6000
           }
         ]
       ]

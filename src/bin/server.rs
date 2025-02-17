@@ -117,59 +117,15 @@ async fn main() -> std::io::Result<()> {
                 playfield.step(&mut p1_client, &mut p2_client).await;
 
                 while let Some(next) = p1_client.reader.try_next().await.unwrap() {
-                    let message = serde_json::from_value::<PlayerAction>(next).unwrap();
-                    execute_player_action(message).await.unwrap();
+                    let _message = serde_json::from_value::<PlayerAction>(next).unwrap();
                     break;
                 }
 
                 while let Some(next) = p2_client.reader.try_next().await.unwrap() {
-                    let message = serde_json::from_value::<PlayerAction>(next).unwrap();
-                    execute_player_action(message).await.unwrap();
+                    let _message = serde_json::from_value::<PlayerAction>(next).unwrap();
                     break;
                 }
             }
         });
-    }
-}
-
-async fn execute_player_action(player_action: PlayerAction) -> std::io::Result<()> {
-    use PlayerAction::*;
-    match player_action {
-        Idle => {
-            debug!("Idle");
-            return Ok(());
-        }
-        ReportDeck(_) => {
-            panic!()
-        }
-        TakeMulligan => {
-            panic!()
-        }
-        NoAction => {
-            panic!()
-        }
-        MainActivateCardEffect(_) => {
-            panic!()
-        }
-        MainPlayCard(_) => {
-            panic!("I don't know how to play a card yet.")
-        }
-        MainAttachDon(_) => {
-            panic!()
-        }
-        MainBattle(_) => {
-            panic!()
-        }
-        End => {
-            debug!("End");
-            return Ok(());
-        }
-        TargetOpposingCharacter(_) => {
-            panic!()
-        }
-        TargetSelfCharacterOrLeader(_) => {
-            panic!()
-        }
-        _ => panic!(),
     }
 }

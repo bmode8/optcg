@@ -17,7 +17,7 @@
   "effects": [
     {
       "TimedEffect": [
-        "CounterPhase",
+        "Counter",
         "Zero",
         [
           {

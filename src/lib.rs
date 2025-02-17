@@ -1,3 +1,6 @@
+#![allow(unused)]
+
+
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -5,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub mod card;
 pub mod game;
 pub mod player;
+pub mod player_area;
 
 use card::*;
 use game::*;
@@ -72,21 +76,27 @@ pub enum PlayerAction {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
-    Connected,
-    PlayerId(Turn),
+    Connected, // Heartbeat for the server to send back to the client.
+    TakeMainAction,
+    DiscardCharacter,
+
+    // Queries
     RequestDeck,
     QueryMulligan,
-    TakeMainAction,
-    InsufficientDon,
-    CannotPlayCounterEventDuringMainPhase,
     QueryTargetOpposingCharacter,
     QueryTargetSelfCharacterOrLeader,
-    InvalidTarget,
-    NoTargetsMeetConditions,
-    DiscardCharacter,
+    
+    // Data Payloads
     PlayerDataPayload(Box<Player>),
     OtherPlayerDataPayload(Box<Player>),
+    PlayerId(Turn),
     PublicPlayfieldStateDataPayload(Box<PublicPlayfieldState>),
+
+    // Error Messages
+    CannotPlayCounterEventDuringMainPhase,
+    InsufficientDon,
+    InvalidTarget,
+    NoTargetsMeetConditions,
 }
 
 impl fmt::Display for CardColor {

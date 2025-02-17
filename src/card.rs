@@ -26,6 +26,7 @@ pub fn install_card_data() {
         types: vec![],
         effects: vec![Effect::PlusPower(1000)],
         attached_don: vec![],
+        status: vec![],
         facing: FaceDown,
     };
 
@@ -310,6 +311,7 @@ pub fn install_card_data() {
             ),
         ],
         attached_don: vec![],
+        status: vec![],
         facing: FaceDown,
     };
 
@@ -562,6 +564,12 @@ pub enum Facing {
     FaceDown,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize,)]
+pub enum Status {
+    PowerPlus(i32),
+    CostMinus(i32),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Card {
     pub name: String,
@@ -576,6 +584,7 @@ pub struct Card {
     pub types: Vec<String>,        // Some cards have more than one type.
     pub effects: Vec<Effect>,
     pub attached_don: Deck, // Only Leader and Character cards can have a don attached
+    pub status: Vec<Status>,
     pub facing: Facing,
 }
 
@@ -607,6 +616,7 @@ impl Card {
             types,
             effects,
             attached_don: vec![],
+            status: vec![],
             facing,
         }
     }
