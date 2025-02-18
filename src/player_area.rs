@@ -1,19 +1,20 @@
 use super::{card::*, player::*, *};
 
-pub struct PlayerArea<'a> {
-    pub player: &'a mut Player,
-    pub life: &'a mut Deck,
-    pub stage: &'a mut Deck,
-    pub character: &'a mut Deck,
-    pub rested_character: &'a mut Deck,
-    pub active_don: &'a mut Deck,
-    pub rested_don: &'a mut Deck,
+pub struct PlayerArea {
+    pub player: Player,
+    pub life: Deck,
+    pub stage: Deck,
+    pub character: Deck,
+    pub rested_character: Deck,
+    pub active_don: Deck,
+    pub rested_don: Deck,
 }
 
-impl PlayerArea<'_> {
-    pub fn process_knock_out(&mut self, i: usize) {
+impl PlayerArea {
+    pub fn process_knock_out(mut self, i: usize) -> Self{
         let card = self.character.remove(i);
         self.player.trash.push(card);
+        self
     }
 
     pub fn count_don_in_play(&self) -> i32 {

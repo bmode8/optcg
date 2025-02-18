@@ -39,39 +39,43 @@ impl Player {
             trash: Deck::new(),
         }
     }
-    pub fn draw(&mut self, n: i32) -> Result<(), ()> {
+
+    /// Draws `n` cards from the main deck and places them in the player's hand.
+    /// Importantly, this is implemented by `pop`ping the main deck, which means
+    /// that the top of the deck is the end of the `Deck`.
+    pub fn draw(mut self, n: i32) -> Result<Self, Self> {
         for _ in 0..n {
             let drawn_card = self.main_deck.pop();
 
             if drawn_card.is_none() {
                 error!("COULD NOT DRAW CARD");
-                return Err(());
+                return Err(self);
             }
             let mut drawn_card = drawn_card.unwrap();
-            drawn_card.set_faceup();
+            let mut drawn_card = drawn_card.set_faceup();
             debug!("DRAWN CARD: {}", drawn_card);
             self.hand.push(drawn_card);
         }
 
-        Ok(())
+        Ok(self)
     }
 
-    pub fn draw_don(&mut self, n: i32) -> Deck {
+    pub fn draw_don(mut self, n: i32) -> (Self, Deck) {
         let mut drawn_don = Deck::new();
         for _ in 0..n {
             let drawn_card = self.don_deck.pop();
 
             if drawn_card.is_none() {
-                return drawn_don;
+                return (self, drawn_don);
             }
 
-            drawn_don.push(drawn_card.unwrap().with_faceup());
+            drawn_don.push(drawn_card.unwrap().set_faceup());
         }
 
-        drawn_don
+        (self, drawn_don)
     }
 
-    pub fn draw_out(&mut self, n: i32) -> Result<Deck, ()> {
+    pub fn draw_out(mut self, n: i32) -> Result<(Self, Deck), ()> {
         let mut drawn_out = Deck::new();
         for _ in 0..n {
             let drawn_card = self.main_deck.pop();
@@ -83,21 +87,27 @@ impl Player {
             drawn_out.push(drawn_card.unwrap());
         }
 
-        Ok(drawn_out)
+        Ok((self, drawn_out))
     }
 
-    pub fn topdeck_hand(&mut self) {
+    pub fn topdeck_hand(mut self) -> Self {
         self.main_deck.append(&mut self.hand);
+
+        self
     }
 
-    pub fn shuffle(&mut self, rng: &mut StdRng) {
+    pub fn shuffle(mut self, rng: &mut StdRng) -> Self{
         self.main_deck.shuffle(rng);
+
+        self
     }
 
-    pub fn turn_hand_faceup(&mut self) {
-        for card in self.hand.iter_mut() {
-            card.set_faceup();
-        }
+    pub fn turn_hand_faceup(mut self) -> Self {
+        let current_hand = self.hand;
+
+        self.hand = current_hand.into_iter().map(|c| c.set_faceup()).collect();
+
+        self
     }
 }
 

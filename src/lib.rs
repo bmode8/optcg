@@ -10,6 +10,8 @@ pub mod game;
 pub mod player;
 pub mod player_area;
 
+pub mod utils;
+
 use card::*;
 use game::*;
 use player::*;

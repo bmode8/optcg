@@ -21,7 +21,7 @@ pub enum Turn {
 pub type PlayerId = Turn;
 
 pub struct GameServer<'stream> {
-    pub game: PlayField,
+    pub game: GameState,
     pub p1_client: PlayerClient<'stream>,
     pub p2_client: PlayerClient<'stream>,
 }
@@ -64,12 +64,12 @@ impl<'stream> PlayerClient<'stream> {
 }
 
 #[derive(Debug)]
-pub struct PlayField {
+pub struct GameState {
     pub turn: Turn,
     pub turn_phase: TurnPhase,
     pub turn_n: i32,
-    pub player_1: Box<Player>,
-    pub player_2: Box<Player>,
+    pub player_1: Player,
+    pub player_2: Player,
     pub p1_life_area: Deck,
     pub p2_life_area: Deck,
     pub p1_stage_area: Deck,
@@ -149,7 +149,7 @@ impl PublicPlayfieldState {
         }
     }
 
-    pub fn from_playfield(playfield: &PlayField) -> PublicPlayfieldState {
+    pub fn from_playfield(playfield: &GameState) -> PublicPlayfieldState {
         PublicPlayfieldState {
             p1_life_area: playfield.p1_life_area.clone(),
             p2_life_area: playfield.p2_life_area.clone(),
@@ -174,7 +174,7 @@ pub struct TurnInfo {
     pub turn_n: i32,
 }
 
-impl PlayField {
+impl GameState {
     async fn sync_data<'stream>(
         current_player_client: &mut PlayerClient<'stream>,
         other_player_client: &mut PlayerClient<'stream>,
@@ -215,7 +215,7 @@ impl PlayField {
         mut player_2: Player,
         p1_client: &mut PlayerClient<'stream>,
         p2_client: &mut PlayerClient<'stream>,
-    ) -> PlayField {
+    ) -> GameState {
         let mut rng = StdRng::seed_from_u64(
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -223,21 +223,16 @@ impl PlayField {
                 .as_secs() as u64,
         );
 
-        player_1.shuffle(&mut rng);
-        player_2.shuffle(&mut rng);
+        let player_1 = player_1.shuffle(&mut rng).draw(5).unwrap();
+        let player_2 = player_2.shuffle(&mut rng).draw(5).unwrap();
 
-        player_1.draw(5).unwrap();
-        player_2.draw(5).unwrap();
-
-        let mut player_1 = Box::new(player_1);
-        let mut player_2 = Box::new(player_2);
         let public_playfield_state = Box::new(PublicPlayfieldState::empty());
 
         p1_client
-            .send_message(ServerMessage::PlayerDataPayload(player_1.clone()))
+            .send_message(ServerMessage::PlayerDataPayload(Box::new(player_1.clone())))
             .await;
         p2_client
-            .send_message(ServerMessage::PlayerDataPayload(player_2.clone()))
+            .send_message(ServerMessage::PlayerDataPayload(Box::new(player_2.clone())))
             .await;
         p1_client
             .send_message(ServerMessage::OtherPlayerDataPayload(
@@ -264,38 +259,40 @@ impl PlayField {
         p1_client.send_message(ServerMessage::QueryMulligan).await;
         let p1_mulligan = p1_client.receive_next_nonidle_action().await;
 
-        if let PlayerAction::TakeMulligan = p1_mulligan {
-            player_1.topdeck_hand();
-            player_1.shuffle(&mut rng);
-            player_1.draw(5).unwrap();
+        let player_1 = if let PlayerAction::TakeMulligan = p1_mulligan {
+            let p = player_1.topdeck_hand().shuffle(&mut rng).draw(5).unwrap();
             p1_client
-                .send_message(ServerMessage::PlayerDataPayload(player_1.clone()))
+                .send_message(ServerMessage::PlayerDataPayload(Box::new(p.clone())))
                 .await;
-        }
+
+            p
+        } else { player_1 };
 
         p2_client.send_message(ServerMessage::QueryMulligan).await;
         let p2_mulligan = p2_client.receive_next_nonidle_action().await;
 
-        if let PlayerAction::TakeMulligan = p2_mulligan {
-            player_2.topdeck_hand();
-            player_2.shuffle(&mut rng);
-            player_2.draw(5).unwrap();
+        let player_2 = if let PlayerAction::TakeMulligan = p2_mulligan {
+            let p = player_2.topdeck_hand().shuffle(&mut rng).draw(5).unwrap();
             p2_client
-                .send_message(ServerMessage::PlayerDataPayload(player_2.clone()))
+                .send_message(ServerMessage::PlayerDataPayload(Box::new(p.clone())))
                 .await;
-        }
+            p
+        } else { player_2 };
 
-        let p1_life = player_1.draw_out(player_1.leader.life()).unwrap();
-        let p2_life = player_2.draw_out(player_2.leader.life()).unwrap();
+        let p1_life_val = player_1.leader.life();
+        let p2_life_val = player_2.leader.life();
+
+        let (player_1, p1_life) = player_1.draw_out(p1_life_val).unwrap();
+        let (player_2, p2_life) = player_2.draw_out(p2_life_val).unwrap();
 
         // Begin turn 1.
-        let p1_don = player_1.draw_don(1);
+        let (player_1, p1_don) = player_1.draw_don(1);
 
         p1_client
-            .send_message(ServerMessage::PlayerDataPayload(player_1.clone()))
+            .send_message(ServerMessage::PlayerDataPayload(Box::new(player_1.clone())))
             .await;
         p2_client
-            .send_message(ServerMessage::PlayerDataPayload(player_2.clone()))
+            .send_message(ServerMessage::PlayerDataPayload(Box::new(player_2.clone())))
             .await;
         p1_client
             .send_message(ServerMessage::OtherPlayerDataPayload(
@@ -308,7 +305,7 @@ impl PlayField {
             ))
             .await;
 
-        PlayField {
+        GameState {
             turn: Turn::P1,
             turn_phase: TurnPhase::Main,
             turn_n: 1,
@@ -349,62 +346,92 @@ impl PlayField {
         None
     }
 
-    pub fn trigger_loser(&self) -> Option<PlayerId> {
+    pub fn trigger_loser() -> Option<PlayerId> {
         todo!()
     }
 
-    pub fn split_into_player_areas<'a>(&'a mut self) -> (PlayerArea<'a>, PlayerArea<'a>, TurnInfo) {
+    pub fn split_into_player_areas(self) -> (PlayerArea, PlayerArea, TurnInfo, StdRng) {
         match self.turn {
             Turn::P1 => (
                 PlayerArea {
-                    player: &mut self.player_1,
-                    life: &mut self.p1_life_area,
-                    stage: &mut self.p1_stage_area,
-                    character: &mut self.p1_character_area,
-                    rested_character: &mut self.p1_rested_character_area,
-                    active_don: &mut self.p1_active_don_area,
-                    rested_don: &mut self.p1_rested_don_area,
+                    player: self.player_1,
+                    life: self.p1_life_area,
+                    stage: self.p1_stage_area,
+                    character: self.p1_character_area,
+                    rested_character: self.p1_rested_character_area,
+                    active_don: self.p1_active_don_area,
+                    rested_don: self.p1_rested_don_area,
                 },
                 PlayerArea {
-                    player: &mut self.player_2,
-                    life: &mut self.p2_life_area,
-                    stage: &mut self.p2_stage_area,
-                    character: &mut self.p2_character_area,
-                    rested_character: &mut self.p2_rested_character_area,
-                    active_don: &mut self.p2_active_don_area,
-                    rested_don: &mut self.p2_rested_don_area,
+                    player: self.player_2,
+                    life: self.p2_life_area,
+                    stage: self.p2_stage_area,
+                    character: self.p2_character_area,
+                    rested_character: self.p2_rested_character_area,
+                    active_don: self.p2_active_don_area,
+                    rested_don: self.p2_rested_don_area,
                 },
                 TurnInfo {
                     turn: self.turn,
                     turn_phase: self.turn_phase,
                     turn_n: self.turn_n,
                 },
+                self.rng
             ),
             Turn::P2 => (
                 PlayerArea {
-                    player: &mut self.player_2,
-                    life: &mut self.p2_life_area,
-                    stage: &mut self.p2_stage_area,
-                    character: &mut self.p2_character_area,
-                    rested_character: &mut self.p2_rested_character_area,
-                    active_don: &mut self.p2_active_don_area,
-                    rested_don: &mut self.p2_rested_don_area,
+                    player: self.player_2,
+                    life: self.p2_life_area,
+                    stage: self.p2_stage_area,
+                    character: self.p2_character_area,
+                    rested_character: self.p2_rested_character_area,
+                    active_don: self.p2_active_don_area,
+                    rested_don: self.p2_rested_don_area,
                 },
                 PlayerArea {
-                    player: &mut self.player_1,
-                    life: &mut self.p1_life_area,
-                    stage: &mut self.p1_stage_area,
-                    character: &mut self.p1_character_area,
-                    rested_character: &mut self.p1_rested_character_area,
-                    active_don: &mut self.p1_active_don_area,
-                    rested_don: &mut self.p1_rested_don_area,
+                    player: self.player_1,
+                    life: self.p1_life_area,
+                    stage: self.p1_stage_area,
+                    character: self.p1_character_area,
+                    rested_character: self.p1_rested_character_area,
+                    active_don: self.p1_active_don_area,
+                    rested_don: self.p1_rested_don_area,
                 },
                 TurnInfo {
                     turn: self.turn,
                     turn_phase: self.turn_phase,
                     turn_n: self.turn_n,
                 },
+                self.rng
             ),
+        }
+    }
+
+    fn recombine_player_areas_into_gamestate(current_player_area: PlayerArea, other_player_area: PlayerArea, turn_info: TurnInfo, rng: StdRng) -> Self {
+        let (player_1_area, player_2_area) = match turn_info.turn {
+            Turn::P1 => (current_player_area, other_player_area),
+            Turn::P2 => (other_player_area, current_player_area),
+        };
+
+        Self {
+            turn: turn_info.turn,
+            turn_phase: turn_info.turn_phase,
+            turn_n: turn_info.turn_n,
+            player_1: player_1_area.player,
+            player_2: player_2_area.player,
+            p1_life_area: player_1_area.life,
+            p2_life_area: player_2_area.life,
+            p1_stage_area: player_1_area.stage,
+            p2_stage_area: player_2_area.stage,
+            p1_character_area: player_1_area.character,
+            p2_character_area: player_2_area.character,
+            p1_rested_character_area: player_1_area.rested_character,
+            p2_rested_character_area: player_2_area.rested_character,
+            p1_active_don_area: player_1_area.active_don,
+            p2_active_don_area: player_2_area.active_don,
+            p1_rested_don_area: player_1_area.rested_don,
+            p2_rested_don_area: player_2_area.rested_don,
+            rng,
         }
     }
 
@@ -453,15 +480,15 @@ impl PlayField {
     }
 
     pub async fn step<'stream>(
-        &mut self,
+        mut self,
         p1_client: &mut PlayerClient<'stream>,
         p2_client: &mut PlayerClient<'stream>,
-    ) {
+    ) -> Self {
         use TurnPhase::*;
 
         debug!("{:?}, {:?}, {:?}", self.turn, self.turn_phase, self.turn_n);
 
-        let (mut current_player_area, mut other_player_area, turn_info) = 
+        let (mut current_player_area, mut other_player_area, mut turn_info, mut rng) = 
             self.split_into_player_areas();
 
         let (mut current_player_client, mut other_player_client) = match turn_info.turn {
@@ -472,80 +499,97 @@ impl PlayField {
         // Behold! A state machine!
         match turn_info.turn_phase {
             Refresh => {
-                Self::refresh_step(
-                    &mut current_player_area,
-                    &mut other_player_area,
+                let (current_player_area, other_player_area) = Self::refresh_step(
+                    current_player_area,
+                    other_player_area,
                     &mut current_player_client,
                     &mut other_player_client,
                     turn_info,
                 )
                 .await;
 
-                self.turn_phase = Draw;
+                turn_info.turn_phase = Draw;
+                self = Self::recombine_player_areas_into_gamestate(current_player_area, other_player_area, turn_info, rng);
             }
             Draw => {
-                Self::draw_step(
-                    &mut current_player_area,
-                    &mut other_player_area,
+                let (current_player_area, other_player_area) = Self::draw_step(
+                    current_player_area,
+                    other_player_area,
                     &mut current_player_client,
                     &mut other_player_client,
                     turn_info,
                 )
                 .await;
-                self.turn_phase = Don;
+                turn_info.turn_phase = Don;
+                self = Self::recombine_player_areas_into_gamestate(current_player_area, other_player_area, turn_info, rng);
             }
             Don => {
-                Self::don_step(
-                    &mut current_player_area,
-                    &mut other_player_area,
+                let (current_player_area, other_player_area) = Self::don_step(
+                    current_player_area,
+                    other_player_area,
                     &mut current_player_client,
                     &mut other_player_client,
                     turn_info,
                 )
                 .await;
-                self.turn_phase = Main;
+                turn_info.turn_phase = Main;
+                self = Self::recombine_player_areas_into_gamestate(current_player_area, other_player_area, turn_info, rng);
             }
             Main => {
-                self.turn_phase = Self::main_step(
-                    &mut current_player_area,
-                    &mut other_player_area,
+                let (current_player_area, other_player_area, next_turn_phase) = Self::main_step(
+                    current_player_area,
+                    other_player_area,
                     &mut current_player_client,
                     &mut other_player_client,
                     turn_info,
                 )
                 .await;
+                self = Self::recombine_player_areas_into_gamestate(current_player_area, other_player_area, turn_info, rng);
             }
-            BattleAttackStep => {}
-            BattleBlockStep => {}
-            BattleCounterStep => {}
-            BattleDamageStep => {}
-            BattleEnd => {}
+            BattleAttackStep => {
+                self = Self::recombine_player_areas_into_gamestate(current_player_area, other_player_area, turn_info, rng);
+            }
+            BattleBlockStep => {
+                self = Self::recombine_player_areas_into_gamestate(current_player_area, other_player_area, turn_info, rng);
+            }
+            BattleCounterStep => {
+                self = Self::recombine_player_areas_into_gamestate(current_player_area, other_player_area, turn_info, rng);
+            }
+            BattleDamageStep => {
+                self = Self::recombine_player_areas_into_gamestate(current_player_area, other_player_area, turn_info, rng);
+            }
+            BattleEnd => {
+                self = Self::recombine_player_areas_into_gamestate(current_player_area, other_player_area, turn_info, rng);
+            }
             End => {
+                self = Self::recombine_player_areas_into_gamestate(current_player_area, other_player_area, turn_info, rng);
                 debug!("(TURN) [END]");
                 self.turn_n += 1;
-                self.turn = match self.turn {
+                self.turn = match turn_info.turn {
                     Turn::P1 => Turn::P2,
                     Turn::P2 => Turn::P1,
                 };
                 self.turn_phase = Refresh;
             }
         }
+
+        self
     }
 
     pub async fn refresh_step<'stream>(
-        current_player_area: &mut PlayerArea<'_>,
-        other_player_area: &mut PlayerArea<'_>,
+        mut current_player_area: PlayerArea,
+        mut other_player_area: PlayerArea,
         current_player_client: &mut PlayerClient<'stream>,
         other_player_client: &mut PlayerClient<'stream>,
         turn_info: TurnInfo,
-    ) {
+    ) -> (PlayerArea, PlayerArea) {
         debug!("(TURN) [REFRESH]");
         current_player_area
             .active_don
-            .append(current_player_area.rested_don);
+            .append(&mut current_player_area.rested_don);
         current_player_area
             .character
-            .append(current_player_area.rested_character);
+            .append(&mut current_player_area.rested_character);
         for card in current_player_area.character.iter_mut() {
             current_player_area
                 .active_don
@@ -563,21 +607,24 @@ impl PlayField {
             public_state,
         )
         .await;
+
+        (current_player_area, other_player_area)
     }
 
     pub async fn draw_step<'stream>(
-        current_player_area: &mut PlayerArea<'_>,
-        other_player_area: &mut PlayerArea<'_>,
+        mut current_player_area: PlayerArea,
+        mut other_player_area: PlayerArea,
         current_player_client: &mut PlayerClient<'stream>,
         other_player_client: &mut PlayerClient<'stream>,
         turn_info: TurnInfo,
-    ) {
+    ) -> (PlayerArea, PlayerArea) {
         debug!("(TURN) [DRAW]");
         let res = current_player_area.player.draw(1);
         match res {
-            Ok(()) => {}
-            Err(()) => {
-                return;
+            Ok(p) => {current_player_area.player = p;},
+            Err(p) => {
+                current_player_area.player = p;
+                return (current_player_area, other_player_area);
             }
         }
 
@@ -592,17 +639,20 @@ impl PlayField {
             public_state,
         )
         .await;
+
+        (current_player_area, other_player_area)
     }
 
     pub async fn don_step<'stream>(
-        current_player_area: &mut PlayerArea<'_>,
-        other_player_area: &mut PlayerArea<'_>,
+        mut current_player_area: PlayerArea,
+        mut other_player_area: PlayerArea,
         current_player_client: &mut PlayerClient<'stream>,
         other_player_client: &mut PlayerClient<'stream>,
         turn_info: TurnInfo,
-    ) {
+    ) -> (PlayerArea, PlayerArea) {
         debug!("(TURN) [DON]");
-        let mut drawn_don = current_player_area.player.draw_don(2);
+        let (p, mut drawn_don) = current_player_area.player.draw_don(2);
+        current_player_area.player = p;
         current_player_area.active_don.append(&mut drawn_don);
 
         let public_state = Self::public_playfield_state(
@@ -619,15 +669,17 @@ impl PlayField {
             public_state,
         )
         .await;
+
+        (current_player_area, other_player_area)
     }
 
     pub async fn main_step<'stream>(
-        current_player_area: &mut PlayerArea<'_>,
-        other_player_area: &mut PlayerArea<'_>,
+        mut current_player_area: PlayerArea,
+        mut other_player_area: PlayerArea,
         current_player_client: &mut PlayerClient<'stream>,
         other_player_client: &mut PlayerClient<'stream>,
         turn_info: TurnInfo,
-    ) -> TurnPhase {
+    ) -> (PlayerArea, PlayerArea, TurnPhase) {
         debug!("(TURN) [MAIN]");
 
         let public_state = Self::public_playfield_state(
@@ -657,7 +709,7 @@ impl PlayField {
         debug!("Received {:?}", player_action);
         match player_action {
             PlayerAction::End => {
-                return TurnPhase::End;
+                return (current_player_area, other_player_area, TurnPhase::End);
             }
             PlayerAction::MainPlayCard(c) => {
                 let card = current_player_area.player.hand.remove(c);
@@ -668,7 +720,8 @@ impl PlayField {
                     current_player_client
                         .send_message(ServerMessage::InsufficientDon)
                         .await;
-                    return TurnPhase::Main;
+                    current_player_area.player.hand.insert(c, card);
+                    return (current_player_area, other_player_area, TurnPhase::Main);
                 }
 
                 // Is it an Event card with Counter Timing?
@@ -680,7 +733,7 @@ impl PlayField {
                                     Timing::Main => {} // fine
                                     Timing::Counter => {
                                         current_player_client.send_message(ServerMessage::CannotPlayCounterEventDuringMainPhase).await;
-                                        return TurnPhase::Main;
+                                        return (current_player_area, other_player_area, TurnPhase::Main);
                                     }
                                     _ => {} // also fine
                                 }
@@ -714,7 +767,14 @@ impl PlayField {
 
                                                 }
                                                 Effect::Draw(n) => {
-                                                    current_player_area.player.draw(n).unwrap();
+                                                    let res = current_player_area.player.draw(n);
+                                                    match res {
+                                                        Ok(p) => {current_player_area.player = p;},
+                                                        Err(p) => {
+                                                            current_player_area.player = p;
+                                                            Self::trigger_loser();
+                                                        }
+                                                    }
                                                 }
                                                 Effect::GiveOtherCardPower(x) => {
 
@@ -740,7 +800,7 @@ impl PlayField {
                                                                     continue;
                                                                 }
 
-                                                                other_player_area.process_knock_out(i);
+                                                                other_player_area = other_player_area.process_knock_out(i);
 
                                                                 let public_state = Self::public_playfield_state(turn_info, &current_player_area, &other_player_area);
 
@@ -908,14 +968,14 @@ impl PlayField {
                 // then, can you pay for it?
             }
             PlayerAction::NoAction => {
-                return TurnPhase::Main;
+                return (current_player_area, other_player_area, TurnPhase::Main);
             }
             _ => {
                 panic!("I don't know how to handle this action yet.")
             }
         }
 
-        TurnPhase::Main
+        (current_player_area, other_player_area, TurnPhase::Main)
     }
 
     pub async fn battle_attack_step() {}

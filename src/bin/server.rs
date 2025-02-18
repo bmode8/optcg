@@ -9,9 +9,9 @@ use tokio::net::TcpListener;
 use tokio_serde::formats::*;
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-use optcg::card::*;
 use optcg::game::*;
 use optcg::player::*;
+use optcg::utils::*;
 use optcg::*;
 
 #[tokio::main]
@@ -95,7 +95,7 @@ async fn main() -> std::io::Result<()> {
                 writer: p2_writer,
             };
 
-            let mut playfield = PlayField::setup(
+            let mut playfield = GameState::setup(
                 player_1.clone(),
                 player_2.clone(),
                 &mut p1_client,
@@ -114,7 +114,7 @@ async fn main() -> std::io::Result<()> {
                     break;
                 }
 
-                playfield.step(&mut p1_client, &mut p2_client).await;
+                playfield = playfield.step(&mut p1_client, &mut p2_client).await;
 
                 while let Some(next) = p1_client.reader.try_next().await.unwrap() {
                     let _message = serde_json::from_value::<PlayerAction>(next).unwrap();
